@@ -119,6 +119,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->trace_mask = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -294,6 +295,8 @@ fork(void)
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
+
+  np->trace_mask = p->trace_mask;
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -588,6 +591,23 @@ kill(int pid)
         // Wake process from sleep().
         p->state = RUNNABLE;
       }
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+  return -1;
+}
+
+int trace(int mask, int pid)
+{
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if(p->pid == pid )
+    {
+      p->trace_mask = mask;
       release(&p->lock);
       return 0;
     }

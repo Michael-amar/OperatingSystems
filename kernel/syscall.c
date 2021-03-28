@@ -7,6 +7,33 @@
 #include "syscall.h"
 #include "defs.h"
 
+
+//save the pretty textual format of the syscalls
+static char* syscalls_names[23] = {
+"fork",
+"exit",
+"wait",
+"pipe",
+"read",
+"kill",
+"exec",
+"fstat",
+"chdir",
+"dup",
+"getpid",
+"sbrk",
+"sleep",
+"uptime",
+"open",
+"write",
+"mknod",
+"unlink",
+"link",
+"mkdir",
+"close",
+"trace",
+};
+
 // Fetch the uint64 at addr from the current process.
 int
 fetchaddr(uint64 addr, uint64 *ip)
@@ -104,6 +131,7 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_trace(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,6 +155,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_trace]   sys_trace,
 };
 
 void
@@ -134,10 +163,28 @@ syscall(void)
 {
   int num;
   struct proc *p = myproc();
-
+  //printf("pid: %d   mask: %d\n", p->pid, p->trace_mask);
   num = p->trapframe->a7;
+  int syscall_mask = 1<<num;
+  if((syscall_mask & p->trace_mask )!= 0)      //check if the syscall num fitts the mask of the process. with bitwise and
+                                                //exemple: mask = 00010010 num = 5 -> syscall_mask = 00010000 != 0
+  {
+    printf("%d: syscall %s ", p->pid, syscalls_names[num-1]);
+    if((num == SYS_kill) | (num == SYS_sbrk)){
+      int pid;
+      argint(0, &pid);
+      printf("%d", pid);
+    }
+    if(num == SYS_fork){
+      printf("NULL ");
+    }
+  }
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
+    if((syscall_mask & p->trace_mask )!= 0 )
+    {
+    printf("-> %d\n", p->trapframe->a0);
+    }
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
