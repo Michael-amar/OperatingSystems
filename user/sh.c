@@ -76,6 +76,38 @@ runcmd(struct cmd *cmd)
     if(ecmd->argv[0] == 0)
       exit(1);
     exec(ecmd->argv[0], ecmd->argv);
+    //our code
+    char buf[1000];
+    static char dir[1500];
+    int fd = open("/path" , O_RDONLY);
+    if(fd > 0)
+    {
+      char* program_name = ecmd->argv[0];
+      read(fd,&buf,1000);
+      close(fd);
+      int index = 0;
+      for(int i = 0; i < strlen(buf) ; i++)
+      {
+        if(buf[i] == ':')
+        {
+          for(int j = 0; j < strlen(ecmd->argv[0]) ; j++)
+          {
+            dir[index] = program_name[j];
+            index++;
+          }
+          dir[index]='\0';
+          ecmd->argv[0] = dir;
+          exec(ecmd->argv[0], ecmd->argv);
+          index = 0;
+        }
+        else
+        {
+          dir[index] = buf[i];
+          index++;
+        }
+      }
+    }   
+    //end our code
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
