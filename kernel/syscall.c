@@ -6,7 +6,7 @@
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"
-
+#include "perf.h"
 
 //save the pretty textual format of the syscalls
 static char (*syscall_names[]) = 
@@ -33,6 +33,7 @@ static char (*syscall_names[]) =
   [SYS_mkdir]   "mkdir",
   [SYS_close]   "close",
   [SYS_trace]   "trace",
+  [SYS_wait_stat] "wait_stat",
 };
 
 // Fetch the uint64 at addr from the current process.
@@ -99,6 +100,15 @@ argaddr(int n, uint64 *ip)
   return 0;
 }
 
+
+int
+argperf(int n, struct perf *perf)
+{
+  perf = (struct perf*) argraw(n);
+  return 0;
+}
+
+
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.
 // Returns string length if OK (including nul), -1 if error.
@@ -133,6 +143,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_wait_stat(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -157,6 +168,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
+[SYS_wait_stat] sys_wait_stat,
 };
 
 void
