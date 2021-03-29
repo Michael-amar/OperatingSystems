@@ -9,29 +9,30 @@
 
 
 //save the pretty textual format of the syscalls
-static char* syscalls_names[23] = {
-"fork",
-"exit",
-"wait",
-"pipe",
-"read",
-"kill",
-"exec",
-"fstat",
-"chdir",
-"dup",
-"getpid",
-"sbrk",
-"sleep",
-"uptime",
-"open",
-"write",
-"mknod",
-"unlink",
-"link",
-"mkdir",
-"close",
-"trace",
+static char (*syscall_names[]) = 
+{
+  [SYS_fork]    "fork",
+  [SYS_exit]    "exit",
+  [SYS_wait]    "wait",
+  [SYS_pipe]    "pipe",
+  [SYS_read]    "read",
+  [SYS_kill]    "kill",
+  [SYS_exec]    "exec",
+  [SYS_fstat]   "fstat",
+  [SYS_chdir]   "chdir",
+  [SYS_dup]     "dup",
+  [SYS_getpid]  "getpid",
+  [SYS_sbrk]    "sbrk",
+  [SYS_sleep]   "sleep",
+  [SYS_uptime]  "uptime",
+  [SYS_open]    "open",
+  [SYS_write]   "write",
+  [SYS_mknod]   "mknod",
+  [SYS_unlink]  "unlink",
+  [SYS_link]    "link",
+  [SYS_mkdir]   "mkdir",
+  [SYS_close]   "close",
+  [SYS_trace]   "trace",
 };
 
 // Fetch the uint64 at addr from the current process.
@@ -163,31 +164,43 @@ syscall(void)
 {
   int num;
   struct proc *p = myproc();
-  //printf("pid: %d   mask: %d\n", p->pid, p->trace_mask);
   num = p->trapframe->a7;
   int syscall_mask = 1<<num;
-  if((syscall_mask & p->trace_mask )!= 0)      //check if the syscall num fitts the mask of the process. with bitwise and
-                                                //exemple: mask = 00010010 num = 5 -> syscall_mask = 00010000 != 0
+  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) 
   {
-    printf("%d: syscall %s ", p->pid, syscalls_names[num-1]);
-    if((num == SYS_kill) | (num == SYS_sbrk)){
-      int pid;
-      argint(0, &pid);
-      printf("%d", pid);
+    if((syscall_mask & p->trace_mask)!= 0)     
+    {
+      int arg0=0;
+      if((num == SYS_kill) | (num == SYS_sbrk))
+      {
+        argint(0, &arg0);
+      }
+      p->trapframe->a0 = syscalls[num]();
+      print_trace_info(num,p->pid,syscall_names[num],arg0,p->trapframe->a0);
     }
-    if(num == SYS_fork){
-      printf("NULL ");
+    else
+    {
+      p->trapframe->a0 = syscalls[num]();
     }
   }
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
-    if((syscall_mask & p->trace_mask )!= 0 )
-    {
-    printf("-> %d\n", p->trapframe->a0);
-    }
-  } else {
-    printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+  else 
+  {
+    printf("%d %s: unknown sys call %d\n",p->pid, p->name, num);
     p->trapframe->a0 = -1;
+  }
+}
+
+void print_trace_info(int syscall_num , int pid, char* syscall_name , int arg0 , uint64 return_value)
+{
+  switch (syscall_num)
+  {
+    case SYS_kill | SYS_sbrk:
+      printf("%d: syscall %s %d -> %d\n",pid,syscall_name,arg0,return_value);
+      break;
+    case SYS_fork:
+      printf("%d: syscall %s NULL -> %d\n",pid,syscall_name,return_value);
+      break;
+    default:
+      printf("%d: syscall %s -> %d\n",pid,syscall_name,return_value);
   }
 }
