@@ -106,4 +106,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  //scheduling fields
+  int ctime;
+  int ttime;
+  int stime;
+  int retime;
+  int rutime;
+  int average_bursttime;
 };

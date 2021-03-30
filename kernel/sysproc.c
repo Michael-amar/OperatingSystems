@@ -106,3 +106,11 @@ sys_trace(void){
   return trace(mask, pid);
 }
 
+uint64
+sys_wait_stat(void){
+  uint64 pid;
+  uint64 perf;
+  if(argaddr(0, &pid) < 0 || argaddr(1, &perf) < 0)
+    return -1;
+  return wait_stat(pid,perf);
+}

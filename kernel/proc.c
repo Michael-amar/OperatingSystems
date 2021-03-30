@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "perf.h"
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -120,6 +120,14 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->trace_mask = 0;
+  
+  //initalize scheduling fields
+  p->ctime = ticks; 
+  p->ttime = 0;
+  p->stime = 0;
+  p->retime = 0;
+  p->rutime = 0;
+  p->average_bursttime = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -373,7 +381,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
-
+  p->ttime = ticks;
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -531,6 +539,7 @@ forkret(void)
 void
 sleep(void *chan, struct spinlock *lk)
 {
+  int enter_time = ticks;
   struct proc *p = myproc();
   
   // Must acquire p->lock in order to
@@ -551,6 +560,9 @@ sleep(void *chan, struct spinlock *lk)
 
   // Tidy up.
   p->chan = 0;
+
+  int exit_time =ticks;
+  p->stime += exit_time - enter_time;
 
   // Reacquire original lock.
   release(&p->lock);
@@ -673,4 +685,71 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+int
+wait_stat(uint64 addr, uint64 perf)
+{
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+  struct perf pf;
+
+  acquire(&wait_lock);
+
+  for(;;)
+  {
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          copy_perf(np,&pf);
+          if (copyout(p->pagetable,perf,(char*)&pf,sizeof(pf)) < 0)
+          {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+void copy_perf(struct proc* p, struct perf* perf)
+{
+  perf->ctime = p->ctime;
+  perf->ttime = p->ttime;
+  perf->stime = p->stime;
+  perf->retime = p->retime;
+  perf->rutime = p->rutime;
+  perf->average_brusttime = p->average_bursttime;
 }
