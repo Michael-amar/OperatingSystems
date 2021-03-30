@@ -144,7 +144,6 @@ int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
 void            print_trace_info(int, int, char*, int, uint64);
-int             argperf(int , struct perf*);
 
 // trap.c
 extern uint     ticks;

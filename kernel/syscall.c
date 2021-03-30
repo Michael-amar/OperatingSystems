@@ -74,13 +74,6 @@ argaddr(int n, uint64 *ip)
 }
 
 
-int
-argperf(int n, struct perf *perf)
-{
-  perf = (struct perf*) argraw(n);
-  return 0;
-}
-
 
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.
