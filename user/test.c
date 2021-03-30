@@ -10,8 +10,6 @@ int main(int argc,char** argv)
     int pid = fork();
     if (pid == 0)
     {
-        sleep(5);
-        sleep(3);
         for (int i=2; i<100 ; i++)
         {
             flag = 0;
@@ -24,8 +22,11 @@ int main(int argc,char** argv)
                 }
             }
             if (flag == 0)
-                printf("%d is prime number\n", i);
+            {
+                printf("%d is prime number\n",i);
+            }
         }
+        
     }
     else 
     {
@@ -36,6 +37,7 @@ int main(int argc,char** argv)
         printf("retime:%d\n",perf.retime);
         printf("rutime:%d\n",perf.rutime);
         printf("average_bursttime:%d\n",perf.average_brusttime);
+        printf("num of bursts:%d\n",perf.num_of_bursts);
 
     }
     exit(0);

@@ -109,6 +109,8 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   //scheduling fields
+  int runnable_since;
+  int num_of_bursts;
   int ctime;
   int ttime;
   int stime;

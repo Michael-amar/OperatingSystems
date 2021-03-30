@@ -164,7 +164,10 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
-  wakeup(&ticks);
+  //if (ticks % QUANTUM == 0)
+  //{
+    wakeup(&ticks);
+  //}
   release(&tickslock);
 }
 

@@ -128,6 +128,7 @@ found:
   p->retime = 0;
   p->rutime = 0;
   p->average_bursttime = 0;
+  p->num_of_bursts = 0;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -251,7 +252,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-
+  p->runnable_since = ticks;
   release(&p->lock);
 }
 
@@ -323,6 +324,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->runnable_since = ticks;
   release(&np->lock);
 
   return pid;
@@ -462,8 +464,20 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        p->num_of_bursts++;
+        p->retime += ticks - p->runnable_since; 
         c->proc = p;
+
+        int start_time = ticks;     //added by us to update the rutime variable of the proccess
         swtch(&c->context, &p->context);
+
+
+        int end_time = ticks;     //added by us to update the rutime variable of the proccess
+        p->rutime += end_time - start_time;
+
+        // float temp = (p->rutime / p->num_of_bursts) * 100;
+        // printf("%f",temp);
+        p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -508,6 +522,7 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->runnable_since = ticks;
   sched();
   release(&p->lock);
 }
@@ -579,6 +594,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        p->runnable_since = ticks;
       }
       release(&p->lock);
     }
@@ -600,6 +616,7 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        p->runnable_since = ticks;
       }
       release(&p->lock);
       return 0;
@@ -751,4 +768,5 @@ void copy_perf(struct proc* p, struct perf* perf)
   perf->retime = p->retime;
   perf->rutime = p->rutime;
   perf->average_brusttime = p->average_bursttime;
+  perf->num_of_bursts = p-> num_of_bursts;
 }
