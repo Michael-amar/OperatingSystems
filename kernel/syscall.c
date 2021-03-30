@@ -6,8 +6,7 @@
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"
-
-
+#include "perf.h"
 
 
 // Fetch the uint64 at addr from the current process.
@@ -73,6 +72,15 @@ argaddr(int n, uint64 *ip)
   *ip = argraw(n);
   return 0;
 }
+
+
+int
+argperf(int n, struct perf *perf)
+{
+  perf = (struct perf*) argraw(n);
+  return 0;
+}
+
 
 // Fetch the nth word-sized system call argument as a null-terminated string.
 // Copies into buf, at most max.

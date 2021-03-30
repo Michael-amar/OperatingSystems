@@ -128,7 +128,6 @@ found:
   p->retime = 0;
   p->rutime = 0;
   p->average_bursttime = 0;
-
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -541,7 +540,7 @@ sleep(void *chan, struct spinlock *lk)
 {
   int enter_time = ticks;
   struct proc *p = myproc();
-  
+  int start_time = ticks;
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -567,6 +566,8 @@ sleep(void *chan, struct spinlock *lk)
   // Reacquire original lock.
   release(&p->lock);
   acquire(lk);
+  int end_time = ticks;
+  p->stime += end_time-start_time;
 }
 
 // Wake up all processes sleeping on chan.
@@ -611,7 +612,8 @@ kill(int pid)
   return -1;
 }
 
-int trace(int mask, int pid)
+int 
+trace(int mask, int pid)
 {
   struct proc *p;
   for(p = proc; p < &proc[NPROC]; p++)
@@ -626,6 +628,68 @@ int trace(int mask, int pid)
     release(&p->lock);
   }
   return -1;
+}
+
+int
+wait_stat(uint64 addr,uint64 perf)
+{
+  struct proc *np;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&np->lock);
+
+        havekids = 1;
+        if(np->state == ZOMBIE){
+          // Found one.
+          pid = np->pid;
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&wait_lock);
+          update_perf(np,perf);
+          return pid;
+        }
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+void update_perf(struct proc* p,uint64 addr)
+{
+  printf("in update\n");
+  struct perf perf;
+  perf.ctime = p->ctime;
+  perf.stime = p->stime;
+  perf.ttime = p->ttime;
+  perf.retime = p->retime;
+  perf.rutime = p->rutime;
+  perf.average_bursttime = p->average_bursttime;
+  copyout(p->pagetable,addr,(char*)&perf,sizeof(perf));
+  printf("finished %d\n",perf.ttime);
 }
 
 // Copy to either a user address, or kernel address,
