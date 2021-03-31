@@ -453,38 +453,40 @@ scheduler(void)
   struct cpu *c = mycpu();
   
   c->proc = 0;
-  for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
+  for(;;)
+  {
+      // Avoid deadlock by ensuring that devices can interrupt.
+      intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        p->num_of_bursts++;
-        p->retime += ticks - p->runnable_since; 
-        c->proc = p;
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          p->num_of_bursts++;
+          p->retime += ticks - p->runnable_since; 
+          c->proc = p;
 
-        int start_time = ticks;     //added by us to update the rutime variable of the proccess
-        swtch(&c->context, &p->context);
+          int start_time = ticks;     //added by us to update the rutime variable of the proccess
+          swtch(&c->context, &p->context);
 
 
-        int end_time = ticks;     //added by us to update the rutime variable of the proccess
-        p->rutime += end_time - start_time;
+          int end_time = ticks;     //added by us to update the rutime variable of the proccess
+          p->rutime += end_time - start_time;
 
-        // float temp = (p->rutime / p->num_of_bursts) * 100;
-        // printf("%f",temp);
-        p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
+          // float temp = (p->rutime / p->num_of_bursts) * 100;
+          // printf("%f",temp);
+          p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+        }
+        release(&p->lock);
       }
-      release(&p->lock);
-    }
+    
   }
 }
 
@@ -522,6 +524,7 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  printf("procees %d yielded cpu time\n",p->pid);
   p->runnable_since = ticks;
   sched();
   release(&p->lock);
