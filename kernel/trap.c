@@ -5,7 +5,6 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "param.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -80,10 +79,19 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
   {
-    if (ticks % QUANTUM == 0)
-    {
-      yield();
-    }
+    //if (ticks % QUANTUM == 0)
+    //{
+      #ifdef SCHEDFLAG
+        switch(SCHEDFLAG)
+        {
+          case FCFS:
+            break;
+          default:
+            yield();
+            break;
+        }
+      #endif
+    //}
   }
 
   usertrapret();

@@ -562,18 +562,24 @@ void fcfs_sched()
 
 //find the first created proccess in RUNNABLE state
 struct proc* find_first_proc(){
-  printf("picking process in find_first_proc!\n");
+  //printf("picking process in find_first_proc!\n");
   struct proc* p;
   struct proc* proc_to_return;
   int min_ctime = __INT_MAX__, found_flag = 0;
   for(p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
+    
     if((p->state == RUNNABLE) & (p->ctime < min_ctime))
     {
+      printf("process %d ctime = %d and is smaller than %d\n",p->pid,p->ctime,min_ctime);
       min_ctime = p->ctime;
       proc_to_return = p;
       found_flag = 1;
+    }
+    else
+    {
+      printf("process %d ctime = %d and not smaller than %d",p->pid,p->ctime,min_ctime);
     }
     release(&p->lock);
   }
@@ -581,7 +587,7 @@ struct proc* find_first_proc(){
     return proc_to_return;
   else 
   {
-    printf("no runnable child found!\n");
+    //printf("find_first_proc: no runnable child found!\n");
     return 0;
   }
 }
