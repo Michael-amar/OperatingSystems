@@ -109,6 +109,12 @@ void            procdump(void);
 int             trace(int, int);
 int             wait_stat(uint64,uint64);
 void            copy_perf(struct proc*, struct perf*);
+void            default_sched();
+void            srt_sched();
+void            fcfs_sched();
+void            cfsd_sched();
+struct proc*    find_first_proc();
+
 
 // swtch.S
 void            swtch(struct context*, struct context*);

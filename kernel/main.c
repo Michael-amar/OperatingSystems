@@ -40,7 +40,13 @@ main(int argc,char** argv)
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
-   printf("here: %d\n",argc);  
+  
+  #ifdef SCHEDFLAG
+    printf("%d",SCHEDFLAG);
+  #else 
+    printf("no flag");
+  #endif
+
   scheduler();     
  
 }

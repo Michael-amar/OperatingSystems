@@ -449,6 +449,32 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
+
+  for (;;)
+  {
+    #ifdef SCHEDFLAG
+      switch(SCHEDFLAG)
+      {
+        case DEFAULT:
+          default_sched();
+          break;
+        case SRT:
+          srt_sched();
+          break;
+        case FCFS:
+          fcfs_sched();
+          break;
+        case CFSD:
+          cfsd_sched();
+          break;
+      }
+    #endif
+    panic("scheduler returned");
+  }
+}
+
+void default_sched()
+{
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -490,6 +516,81 @@ scheduler(void)
   }
 }
 
+void srt_sched()
+{
+  return;
+}
+
+void fcfs_sched()
+{
+  printf("in fcfs scheduling!\n");
+  struct cpu *c = mycpu();
+  for(;;)
+  {
+    struct proc* p = find_first_proc();
+    if(p)
+    {
+      acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          p->num_of_bursts++;
+          p->retime += ticks - p->runnable_since; 
+          c->proc = p;
+
+          int start_time = ticks;     //added by us to update the rutime variable of the proccess
+          swtch(&c->context, &p->context);
+
+
+          int end_time = ticks;     //added by us to update the rutime variable of the proccess
+          p->rutime += end_time - start_time;
+
+          // float temp = (p->rutime / p->num_of_bursts) * 100;
+          // printf("%f",temp);
+          p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+        }
+        release(&p->lock);  
+    }
+  }
+}
+
+//find the first created proccess in RUNNABLE state
+struct proc* find_first_proc(){
+  printf("picking process in find_first_proc!\n");
+  struct proc* p;
+  struct proc* proc_to_return;
+  int min_ctime = __INT_MAX__, found_flag = 0;
+  for(p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if((p->state == RUNNABLE) & (p->ctime < min_ctime))
+    {
+      min_ctime = p->ctime;
+      proc_to_return = p;
+      found_flag = 1;
+    }
+    release(&p->lock);
+  }
+  if(found_flag)
+    return proc_to_return;
+  else 
+  {
+    printf("no runnable child found!\n");
+    return 0;
+  }
+}
+
+void
+cfsd_sched()
+{
+  return;
+}
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
