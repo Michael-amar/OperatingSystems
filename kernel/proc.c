@@ -524,7 +524,6 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-  printf("procees %d yielded cpu time\n",p->pid);
   p->runnable_since = ticks;
   sched();
   release(&p->lock);

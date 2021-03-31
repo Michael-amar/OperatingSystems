@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "param.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -78,7 +79,12 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
-    yield();
+  {
+    if (ticks % QUANTUM == 0)
+    {
+      yield();
+    }
+  }
 
   usertrapret();
 }
@@ -164,10 +170,7 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
-  //if (ticks % QUANTUM == 0)
-  //{
-    wakeup(&ticks);
-  //}
+  wakeup(&ticks);
   release(&tickslock);
 }
 
