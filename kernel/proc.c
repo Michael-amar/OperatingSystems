@@ -523,15 +523,21 @@ void srt_sched()
 
 void fcfs_sched()
 {
-  printf("in fcfs scheduling!\n");
+   struct proc *p;
   struct cpu *c = mycpu();
+  
+  c->proc = 0;
   for(;;)
   {
-    struct proc* p = find_first_proc();
-    if(p)
-    {
-      acquire(&p->lock);
-        if(p->state == RUNNABLE) {
+      // Avoid deadlock by ensuring that devices can interrupt.
+      intr_on();
+
+      p = find_first_proc();
+      if (p != 0)
+      {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) 
+        {
           // Switch to chosen process.  It is the process's job
           // to release its lock and then reacquire it
           // before jumping back to us.
@@ -555,41 +561,28 @@ void fcfs_sched()
           // It should have changed its p->state before coming back.
           c->proc = 0;
         }
-        release(&p->lock);  
-    }
+        release(&p->lock);   
+      }
   }
 }
 
 //find the first created proccess in RUNNABLE state
-struct proc* find_first_proc(){
-  //printf("picking process in find_first_proc!\n");
+struct proc* find_first_proc()
+{
   struct proc* p;
-  struct proc* proc_to_return;
-  int min_ctime = __INT_MAX__, found_flag = 0;
-  for(p = proc; p < &proc[NPROC]; p++)
+  struct proc* proc_to_return = 0;
+  int min_ctime = __INT_MAX__;
+  for (p = proc ; p< &proc[NPROC] ; p++)
   {
     acquire(&p->lock);
-    
-    if((p->state == RUNNABLE) & (p->ctime < min_ctime))
+    if (p->state == RUNNABLE && p->ctime < min_ctime)
     {
-      printf("process %d ctime = %d and is smaller than %d\n",p->pid,p->ctime,min_ctime);
       min_ctime = p->ctime;
       proc_to_return = p;
-      found_flag = 1;
-    }
-    else
-    {
-      printf("process %d ctime = %d and not smaller than %d",p->pid,p->ctime,min_ctime);
     }
     release(&p->lock);
   }
-  if(found_flag)
-    return proc_to_return;
-  else 
-  {
-    //printf("find_first_proc: no runnable child found!\n");
-    return 0;
-  }
+  return proc_to_return;
 }
 
 void

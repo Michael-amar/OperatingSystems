@@ -16,3 +16,4 @@
 #define FCFS         2
 #define SRT          3
 #define CFSD         4
+#define ALPHA        50
