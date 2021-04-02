@@ -7,7 +7,7 @@ volatile static int started = 0;
 
 // start() jumps here in supervisor mode on all CPUs.
 void
-main(int argc,char** argv)
+main()
 {
   
   if(cpuid() == 0){
@@ -40,7 +40,5 @@ main(int argc,char** argv)
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
-
   scheduler();     
- 
 }

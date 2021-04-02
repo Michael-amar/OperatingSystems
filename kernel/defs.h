@@ -115,7 +115,7 @@ void            fcfs_sched();
 void            cfsd_sched();
 struct proc*    find_min_ctime();
 struct proc*    find_min_burst();
-int set_priority(int);
+int             set_priority(int);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

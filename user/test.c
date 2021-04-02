@@ -25,7 +25,9 @@ int main(int argc, char** argv)
     {
         set_priority(3);
         long_time_method();
-
+        long_time_method();
+        long_time_method();
+        long_time_method();
         if(!fork())
         {
             long_time_method();
@@ -35,7 +37,9 @@ int main(int argc, char** argv)
         }
         else
         {
-            sleep(2);
+            sleep(60);
+            long_time_method();
+            long_time_method();
             printf("first_child\n");
             long_time_method();
         }
@@ -44,16 +48,15 @@ int main(int argc, char** argv)
     {
         sleep(2);
         printf("father\n");
-        // struct perf perf;
-        // wait_stat(&pid,&perf);
-        // printf("ctime:%d\n",perf.ctime);
-        // printf("ttime:%d\n",perf.ttime);
-        // printf("stime:%d\n",perf.stime);
-        // printf("retime:%d\n",perf.retime);
-        // printf("rutime:%d\n",perf.rutime);
+        struct perf perf;
+        wait_stat(&pid,&perf);
+        printf("ctime:%d\n",perf.ctime);
+        printf("ttime:%d\n",perf.ttime);
+        printf("stime:%d\n",perf.stime);
+        printf("retime:%d\n",perf.retime);
+        printf("rutime:%d\n",perf.rutime);
     }
     
     exit(0);
     return 1;
-
 }
