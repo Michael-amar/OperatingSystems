@@ -11,9 +11,21 @@
 #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
-#define QUANTUM      5     // ticks between swapping process.
+#define QUANTUM      1     // ticks between swapping process.
 #define DEFAULT      1
 #define FCFS         2
 #define SRT          3
 #define CFSD         4
 #define ALPHA        50
+
+#define TEST_HIGH    1
+#define HIGH         2
+#define NORMAL       3
+#define LOW          4
+#define TEST_LOW     5
+
+#define TEST_HIGH_DECAY     1
+#define HIGH_DECAY          3
+#define NORMAL_DECAY        5
+#define LOW_DECAY           7
+#define TEST_LOW_DECAY      25

@@ -79,8 +79,8 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
   {
-    //if (ticks % QUANTUM == 0)
-    //{
+    if (ticks % QUANTUM == 0)
+    {
       #ifdef SCHEDFLAG
         switch(SCHEDFLAG)
         {
@@ -91,7 +91,7 @@ usertrap(void)
             break;
         }
       #endif
-    //}
+    }
   }
 
   usertrapret();

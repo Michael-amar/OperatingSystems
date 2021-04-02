@@ -110,10 +110,20 @@ sys_trace(void){
 }
 
 uint64
-sys_wait_stat(void){
+sys_wait_stat(void)
+{
   uint64 pid;
   uint64 perf;
   if(argaddr(0, &pid) < 0 || argaddr(1, &perf) < 0)
     return -1;
   return wait_stat(pid,perf);
+}
+
+uint64
+sys_set_priority(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  return set_priority(n);
 }

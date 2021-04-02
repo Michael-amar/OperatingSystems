@@ -127,8 +127,8 @@ found:
   p->stime = 0;
   p->retime = 0;
   p->rutime = 0;
-  p->average_bursttime = 0;
-  p->num_of_bursts = 0;
+  p->average_bursttime = QUANTUM*100;
+  p->decay_factor = NORMAL_DECAY;
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -297,7 +297,8 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  np->average_bursttime = QUANTUM*100;
+  np->decay_factor = p->decay_factor;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -491,20 +492,18 @@ void default_sched()
           // to release its lock and then reacquire it
           // before jumping back to us.
           p->state = RUNNING;
-          p->num_of_bursts++;
           p->retime += ticks - p->runnable_since; 
           c->proc = p;
 
           int start_time = ticks;     //added by us to update the rutime variable of the proccess
+          
           swtch(&c->context, &p->context);
+          
 
+          int burst_time = ticks-start_time;     //added by us to update the rutime variable of the proccess
+          p->rutime += burst_time;
 
-          int end_time = ticks;     //added by us to update the rutime variable of the proccess
-          p->rutime += end_time - start_time;
-
-          // float temp = (p->rutime / p->num_of_bursts) * 100;
-          // printf("%f",temp);
-          p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
+          p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
 
           // Process is done running for now.
           // It should have changed its p->state before coming back.
@@ -518,12 +517,7 @@ void default_sched()
 
 void srt_sched()
 {
-  return;
-}
-
-void fcfs_sched()
-{
-   struct proc *p;
+  struct proc *p;
   struct cpu *c = mycpu();
   
   c->proc = 0;
@@ -532,7 +526,7 @@ void fcfs_sched()
       // Avoid deadlock by ensuring that devices can interrupt.
       intr_on();
 
-      p = find_first_proc();
+      p = find_min_burst();
       if (p != 0)
       {
         acquire(&p->lock);
@@ -542,20 +536,16 @@ void fcfs_sched()
           // to release its lock and then reacquire it
           // before jumping back to us.
           p->state = RUNNING;
-          p->num_of_bursts++;
           p->retime += ticks - p->runnable_since; 
           c->proc = p;
 
           int start_time = ticks;     //added by us to update the rutime variable of the proccess
           swtch(&c->context, &p->context);
 
+          int burst_time = ticks-start_time;
+          p->rutime += burst_time;
 
-          int end_time = ticks;     //added by us to update the rutime variable of the proccess
-          p->rutime += end_time - start_time;
-
-          // float temp = (p->rutime / p->num_of_bursts) * 100;
-          // printf("%f",temp);
-          p->average_bursttime = (p->rutime*100) / p->num_of_bursts;
+          p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
 
           // Process is done running for now.
           // It should have changed its p->state before coming back.
@@ -566,8 +556,87 @@ void fcfs_sched()
   }
 }
 
+struct proc* find_min_burst()
+{
+  struct proc* p;
+  struct proc* proc_to_return = 0;
+  int min_burst = __INT_MAX__;
+  for (p = proc ; p< &proc[NPROC] ; p++)
+  {
+    acquire(&p->lock);
+    if (p->state == RUNNABLE && p->average_bursttime < min_burst)
+    {
+      min_burst = p->average_bursttime;
+      proc_to_return = p;
+    }
+    release(&p->lock);
+  }
+  return proc_to_return;
+}
+
+void fcfs_sched()
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;)
+  {
+      // Avoid deadlock by ensuring that devices can interrupt.
+      intr_on();
+
+      p = find_min_ctime();
+      if (p != 0)
+      {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) 
+        {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          p->retime += ticks - p->runnable_since; 
+          c->proc = p;
+
+          int start_time = ticks;     //added by us to update the rutime variable of the proccess
+          swtch(&c->context, &p->context);
+
+          int burst_time = ticks-start_time;
+          p->rutime += burst_time;
+
+          p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+        }
+        release(&p->lock);   
+      }
+  }
+}
+struct proc* find_min_ratio()
+{
+  struct proc* p;
+  struct proc* proc_to_return = 0;
+  int min_ratio = __INT_MAX__;
+  for (p = proc ; p< &proc[NPROC] ; p++)
+  {
+    acquire(&p->lock);
+    int ratio = 0;
+    if (p->rutime != 0)
+      ratio = (p->rutime * p->decay_factor)/(p->rutime+p->stime);
+    if (p->state == RUNNABLE && ratio < min_ratio)
+    {
+      min_ratio = ratio;
+      proc_to_return = p;
+    }
+    release(&p->lock);
+  }
+  return proc_to_return;
+}
+
 //find the first created proccess in RUNNABLE state
-struct proc* find_first_proc()
+struct proc* find_min_ctime()
 {
   struct proc* p;
   struct proc* proc_to_return = 0;
@@ -588,7 +657,43 @@ struct proc* find_first_proc()
 void
 cfsd_sched()
 {
-  return;
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;)
+  {
+      // Avoid deadlock by ensuring that devices can interrupt.
+      intr_on();
+
+      p = find_min_ratio();
+      if (p != 0)
+      {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) 
+        {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          p->retime += ticks - p->runnable_since; 
+          c->proc = p;
+
+          int start_time = ticks;     //added by us to update the rutime variable of the proccess
+          swtch(&c->context, &p->context);
+
+          int burst_time = ticks-start_time;
+          p->rutime += burst_time;
+
+          p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+        }
+        release(&p->lock);   
+      }
+  }
 }
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -862,6 +967,33 @@ wait_stat(uint64 addr, uint64 perf)
   }
 }
 
+int 
+set_priority(int priority)
+{
+  if((priority > TEST_LOW) | (priority < TEST_HIGH))
+    return -1;
+  struct proc* p = myproc();
+  switch(priority)
+  {
+    case TEST_HIGH:
+      p->decay_factor = TEST_HIGH_DECAY;
+      break;
+    case HIGH:
+      p->decay_factor = HIGH_DECAY;
+      break;
+    case NORMAL:
+      p->decay_factor = NORMAL_DECAY;
+      break;
+    case LOW:
+      p->decay_factor = LOW_DECAY;
+      break;
+    case TEST_LOW:
+      p->decay_factor = TEST_LOW_DECAY;
+      break;
+  }
+  return 0;
+}
+
 void copy_perf(struct proc* p, struct perf* perf)
 {
   perf->ctime = p->ctime;
@@ -870,5 +1002,4 @@ void copy_perf(struct proc* p, struct perf* perf)
   perf->retime = p->retime;
   perf->rutime = p->rutime;
   perf->average_brusttime = p->average_bursttime;
-  perf->num_of_bursts = p-> num_of_bursts;
 }

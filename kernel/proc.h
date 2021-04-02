@@ -110,11 +110,11 @@ struct proc {
 
   //scheduling fields
   int runnable_since;
-  int num_of_bursts;
   int ctime;
   int ttime;
   int stime;
   int retime;
   int rutime;
   int average_bursttime;
+  int decay_factor;
 };
