@@ -117,4 +117,6 @@ struct proc {
   int rutime;
   int average_bursttime;
   int decay_factor;
+
+  int sleeping;
 };

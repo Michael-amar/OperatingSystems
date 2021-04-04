@@ -13,7 +13,7 @@
 #define MAXPATH             128   // maximum file path name
 
 //-----------our code------------------
-#define QUANTUM             1     // ticks between swapping process.
+#define QUANTUM             5     // ticks between swapping process.
 #define DEFAULT             1
 #define FCFS                2
 #define SRT                 3

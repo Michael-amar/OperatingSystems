@@ -109,13 +109,13 @@ void            procdump(void);
 int             trace(int, int);
 int             wait_stat(uint64,uint64);
 void            copy_perf(struct proc*, struct perf*);
-void            default_sched();
-void            srt_sched();
-void            fcfs_sched();
-void            cfsd_sched();
 struct proc*    find_min_ctime();
 struct proc*    find_min_burst();
+struct proc*    find_min_ratio();
+struct proc*    round_robin(struct proc*);
 int             set_priority(int);
+struct proc*    pick_process(struct proc*);
+
 
 // swtch.S
 void            swtch(struct context*, struct context*);

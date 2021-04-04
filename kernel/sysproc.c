@@ -64,6 +64,7 @@ sys_sleep(void)
     return -1;
   acquire(&tickslock);
   ticks0 = ticks;
+  myproc()->sleeping =1;
   while(ticks - ticks0 < n){
     if(myproc()->killed){
       release(&tickslock);
@@ -71,7 +72,9 @@ sys_sleep(void)
     }
     sleep(&ticks, &tickslock);
   }
+  myproc()->sleeping = 0;
   release(&tickslock);
+  
   return 0;
 }
 

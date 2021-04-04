@@ -3,60 +3,35 @@
 #include "kernel/fcntl.h"
 #include "kernel/perf.h"
 
-void long_time_method()
-{
-    printf("long time method\n");
-    int counter;
-    for (int i=0 ; i<3000 ; i++)
-    {
-        for (int j=0 ; j<50000 ; j++)
-        {
-            counter+= (i+j)/2+(j*i);
-        }
-    }
-}
-
 int main(int argc, char** argv)
 {
-    long_time_method();
-    set_priority(5);
-    int pid = fork();
-    if(!pid)
-    {
-        set_priority(3);
-        long_time_method();
-        long_time_method();
-        long_time_method();
-        long_time_method();
-        if(!fork())
-        {
-            long_time_method();
-            set_priority(1);
-            sleep(2);
-            printf("second_child\n");
-        }
-        else
-        {
-            sleep(60);
-            long_time_method();
-            long_time_method();
-            printf("first_child\n");
-            long_time_method();
-        }
+    int xst;
+  
+  for(int i = 0; i < 100; i++)
+  {
+    printf("fork in main\n");
+    int pid1 = fork();
+    if(pid1 < 0){
+      printf("fork failed\n");
+      exit(1);
     }
-    else
-    {
-        sleep(2);
-        printf("father\n");
-        struct perf perf;
-        wait_stat(&pid,&perf);
-        printf("ctime:%d\n",perf.ctime);
-        printf("ttime:%d\n",perf.ttime);
-        printf("stime:%d\n",perf.stime);
-        printf("retime:%d\n",perf.retime);
-        printf("rutime:%d\n",perf.rutime);
+    if(pid1 == 0){
+      while(1) {
+        getpid();
+      }
+      exit(0);
     }
-    
-    exit(0);
-    return 1;
+    printf("father after if\n");
+    sleep(1);
+    printf("father after sleep\n");
+    kill(pid1);
+    printf("father after kill\n");
+    wait(&xst);
+    printf("father after wait\n");
+    if(xst != -1) {
+       printf("status should be -1\n");
+       exit(1);
+    }
+  }
+  exit(0);
 }
