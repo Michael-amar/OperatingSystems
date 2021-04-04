@@ -6,7 +6,7 @@
 int main(int argc, char** argv)
 {
     int xst;
-  
+  printf("father pid %d\n" , getpid());
   for(int i = 0; i < 100; i++)
   {
     printf("fork in main\n");

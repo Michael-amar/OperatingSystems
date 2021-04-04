@@ -112,10 +112,9 @@ void            copy_perf(struct proc*, struct perf*);
 struct proc*    find_min_ctime();
 struct proc*    find_min_burst();
 struct proc*    find_min_ratio();
-struct proc*    round_robin(struct proc*);
 int             set_priority(int);
-struct proc*    pick_process(struct proc*);
-
+struct proc*    pick_process();
+void            alternate_scheduler(void) __attribute__((noreturn));
 
 // swtch.S
 void            swtch(struct context*, struct context*);

@@ -40,5 +40,10 @@ main()
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
-  scheduler();     
+  #ifdef SCHEDFLAG
+    if (SCHEDFLAG == DEFAULT)
+      scheduler();  
+    else
+      alternate_scheduler();
+  #endif   
 }

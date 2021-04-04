@@ -66,12 +66,14 @@ sys_sleep(void)
   ticks0 = ticks;
   myproc()->sleeping =1;
   while(ticks - ticks0 < n){
+    printf("in sleep\n");
     if(myproc()->killed){
       release(&tickslock);
       return -1;
     }
     sleep(&ticks, &tickslock);
   }
+  printf("out of sleep\n");
   myproc()->sleeping = 0;
   release(&tickslock);
   

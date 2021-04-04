@@ -547,6 +547,8 @@ wakeup(void *chan)
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
+        if (p->pid == 3 )
+          printf("waked up 3\n");
         p->state = RUNNABLE;
         p->runnable_since = ticks;
       }
@@ -743,6 +745,50 @@ set_priority(int priority)
   return 0;
 }
 
+void
+scheduler(void)
+{
+  printf("in deault sched\n");
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for(p = proc; p < &proc[NPROC]; p++) 
+    {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) 
+      {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        if (!p->sleeping)
+        {
+          p->retime += ticks - p->runnable_since; 
+        }
+        c->proc = p;
+
+        int start_time = ticks;     //added by us to update the rutime variable of the proccess
+        
+        swtch(&c->context, &p->context);
+        int burst_time = ticks-start_time;     //added by us to update the rutime variable of the proccess
+        p->rutime += burst_time;
+
+        p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&p->lock);
+    }
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -751,18 +797,18 @@ set_priority(int priority)
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
 void 
-scheduler(void)
+alternate_scheduler(void)
 {
-  struct proc *p = proc;
+  printf("in alternate sched\n");
+  struct proc *p;
   struct cpu *c = mycpu();
-  
   c->proc = 0;
   for(;;)
   {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    p = pick_process(p);
+    p = pick_process();
     if (p)
     {
       acquire(&p->lock);
@@ -795,13 +841,11 @@ scheduler(void)
   }
 }
 
-struct proc* pick_process(struct proc* p)
+struct proc* pick_process()
 {
   #ifdef SCHEDFLAG
     switch(SCHEDFLAG)
     {
-      case DEFAULT:
-        return round_robin(p);
       case FCFS:
         return find_min_ctime();
       case SRT:
@@ -810,29 +854,8 @@ struct proc* pick_process(struct proc* p)
         return find_min_ratio();
     }
   #endif
+  panic("no process picked!");
   return 0;
-}
-
-struct proc* round_robin(struct proc* last_proc)
-{
-  struct proc* proc_to_return = 0;
-  struct proc* p;
-  for (;;)
-  {
-    for (p=last_proc ; p<&proc[NPROC] ; p++)
-    {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE)
-      {
-        proc_to_return = p;
-        release(&p->lock);
-        return proc_to_return;
-      }
-      release(&p->lock);
-    }
-    last_proc = proc;
-  }
-  return proc_to_return;
 }
 
 struct proc* find_min_burst()
