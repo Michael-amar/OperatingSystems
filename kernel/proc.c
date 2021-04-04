@@ -547,8 +547,6 @@ wakeup(void *chan)
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
-        if (p->pid == 3 )
-          printf("waked up 3\n");
         p->state = RUNNABLE;
         p->runnable_since = ticks;
       }
@@ -748,7 +746,6 @@ set_priority(int priority)
 void
 scheduler(void)
 {
-  printf("in deault sched\n");
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -799,7 +796,6 @@ scheduler(void)
 void 
 alternate_scheduler(void)
 {
-  printf("in alternate sched\n");
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
