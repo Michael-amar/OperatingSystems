@@ -843,7 +843,7 @@ struct proc* pick_process()
     switch(SCHEDFLAG)
     {
       case FCFS:
-        return find_min_ctime();
+        return find_min_runnable_since();
       case SRT:
         return find_min_burst();
       case CFSD:
@@ -894,17 +894,17 @@ struct proc* find_min_ratio()
 }
 
 //find the first created proccess in RUNNABLE state
-struct proc* find_min_ctime()
+struct proc* find_min_runnable_since()
 {
   struct proc* p;
   struct proc* proc_to_return = 0;
-  int min_ctime = __INT_MAX__;
+  int min_runnable_since = __INT_MAX__;
   for (p = proc ; p< &proc[NPROC] ; p++)
   {
     acquire(&p->lock);
-    if (p->state == RUNNABLE && p->ctime < min_ctime)
+    if (p->state == RUNNABLE && p->runnable_since < min_runnable_since)
     {
-      min_ctime = p->ctime;
+      min_runnable_since = p->runnable_since;
       proc_to_return = p;
     }
     release(&p->lock);
