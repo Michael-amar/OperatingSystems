@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "perf.h"
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -119,17 +119,6 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  
-  p->trace_mask = 0;
-  //initalize scheduling fields
-  p->ctime = ticks; 
-  p->ttime = 0;
-  p->stime = 0;
-  p->retime = 0;
-  p->rutime = 0;
-  p->average_bursttime = QUANTUM*100;
-  p->decay_factor = NORMAL_DECAY;
-  p->sleeping = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -254,7 +243,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-  p->runnable_since = ticks;
+
   release(&p->lock);
 }
 
@@ -298,13 +287,7 @@ fork(void)
     release(&np->lock);
     return -1;
   }
-  
-  //-----------------------our additions--------------
   np->sz = p->sz;
-  np->average_bursttime = QUANTUM*100;
-  np->decay_factor = p->decay_factor;
-  np->trace_mask = p->trace_mask;
-  //---------------------------------------------------
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -330,8 +313,8 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
-  np->runnable_since = ticks;
   release(&np->lock);
+
   return pid;
 }
 
@@ -387,7 +370,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
-  p->ttime = ticks;
+
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -444,6 +427,43 @@ wait(uint64 addr)
   }
 }
 
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&p->lock);
+    }
+  }
+}
+
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -478,7 +498,6 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-  p->runnable_since = ticks;
   sched();
   release(&p->lock);
 }
@@ -509,8 +528,8 @@ forkret(void)
 void
 sleep(void *chan, struct spinlock *lk)
 {
-  int enter_time = ticks;
   struct proc *p = myproc();
+  
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -524,12 +543,11 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+
   sched();
+
   // Tidy up.
   p->chan = 0;
-
-  int exit_time =ticks;
-  p->stime += exit_time - enter_time;
 
   // Reacquire original lock.
   release(&p->lock);
@@ -548,7 +566,6 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
-        p->runnable_since = ticks;
       }
       release(&p->lock);
     }
@@ -569,9 +586,7 @@ kill(int pid)
       p->killed = 1;
       if(p->state == SLEEPING){
         // Wake process from sleep().
-        p->sleeping = 0;
         p->state = RUNNABLE;
-        p->runnable_since = ticks;
       }
       release(&p->lock);
       return 0;
@@ -580,8 +595,6 @@ kill(int pid)
   }
   return -1;
 }
-
-
 
 // Copy to either a user address, or kernel address,
 // depending on usr_dst.
@@ -640,284 +653,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-int 
-trace(int mask, int pid)
-{
-  struct proc *p;
-  for(p = proc; p < &proc[NPROC]; p++)
-  {
-    acquire(&p->lock);
-    if(p->pid == pid )
-    {
-      p->trace_mask = mask;
-      release(&p->lock);
-      return 0;
-    }
-    release(&p->lock);
-  }
-  return -1;
-}
-
-int
-wait_stat(uint64 addr, uint64 perf)
-{
-  struct proc *np;
-  int havekids, pid;
-  struct proc *p = myproc();
-  struct perf pf;
-
-  acquire(&wait_lock);
-
-  for(;;)
-  {
-    // Scan through table looking for exited children.
-    havekids = 0;
-    for(np = proc; np < &proc[NPROC]; np++){
-      if(np->parent == p){
-        // make sure the child isn't still in exit() or swtch().
-        acquire(&np->lock);
-
-        havekids = 1;
-        if(np->state == ZOMBIE){
-          // Found one.
-          pid = np->pid;
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
-                                  sizeof(np->xstate)) < 0) {
-            release(&np->lock);
-            release(&wait_lock);
-            return -1;
-          }
-          copy_perf(np,&pf);
-          if (copyout(p->pagetable,perf,(char*)&pf,sizeof(pf)) < 0)
-          {
-            release(&np->lock);
-            release(&wait_lock);
-            return -1;
-          }
-          freeproc(np);
-          release(&np->lock);
-          release(&wait_lock);
-          return pid;
-        }
-        release(&np->lock);
-      }
-    }
-
-    // No point waiting if we don't have any children.
-    if(!havekids || p->killed){
-      release(&wait_lock);
-      return -1;
-    }
-    
-    // Wait for a child to exit.
-    sleep(p, &wait_lock);  //DOC: wait-sleep
-  }
-}
-
-int 
-set_priority(int priority)
-{
-  if((priority > TEST_LOW) | (priority < TEST_HIGH))
-    return -1;
-  struct proc* p = myproc();
-  switch(priority)
-  {
-    case TEST_HIGH:
-      p->decay_factor = TEST_HIGH_DECAY;
-      break;
-    case HIGH:
-      p->decay_factor = HIGH_DECAY;
-      break;
-    case NORMAL:
-      p->decay_factor = NORMAL_DECAY;
-      break;
-    case LOW:
-      p->decay_factor = LOW_DECAY;
-      break;
-    case TEST_LOW:
-      p->decay_factor = TEST_LOW_DECAY;
-      break;
-  }
-  return 0;
-}
-
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-  
-  c->proc = 0;
-  for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    for(p = proc; p < &proc[NPROC]; p++) 
-    {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) 
-      {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        if (!p->sleeping)
-        {
-          p->retime += ticks - p->runnable_since; 
-        }
-        c->proc = p;
-
-        int start_time = ticks;     //added by us to update the rutime variable of the proccess
-        
-        swtch(&c->context, &p->context);
-        int burst_time = ticks-start_time;     //added by us to update the rutime variable of the proccess
-        p->rutime += burst_time;
-
-        p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-      }
-      release(&p->lock);
-    }
-  }
-}
-
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-void 
-alternate_scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
-  for(;;)
-  {
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    p = pick_process();
-    if (p)
-    {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) 
-      {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        if (!p->sleeping)
-        {
-          p->retime += ticks - p->runnable_since; 
-        }
-        c->proc = p;
-
-        int start_time = ticks;     //added by us to update the rutime variable of the proccess
-        
-        swtch(&c->context, &p->context);
-        int burst_time = ticks-start_time;     //added by us to update the rutime variable of the proccess
-        p->rutime += burst_time;
-
-        p->average_bursttime = (ALPHA*burst_time)+((100-ALPHA)*(p->average_bursttime/100));
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-      }
-      release(&p->lock);
-    }
-  }
-}
-
-struct proc* pick_process()
-{
-  #ifdef SCHEDFLAG
-    switch(SCHEDFLAG)
-    {
-      case FCFS:
-        return find_min_runnable_since();
-      case SRT:
-        return find_min_burst();
-      case CFSD:
-        return find_min_ratio();
-    }
-  #endif
-  panic("no process picked!");
-  return 0;
-}
-
-struct proc* find_min_burst()
-{
-  struct proc* p;
-  struct proc* proc_to_return = 0;
-  int min_burst = __INT_MAX__;
-  for (p = proc ; p< &proc[NPROC] ; p++)
-  {
-    acquire(&p->lock);
-    if (p->state == RUNNABLE && p->average_bursttime < min_burst)
-    {
-      min_burst = p->average_bursttime;
-      proc_to_return = p;
-    }
-    release(&p->lock);
-  }
-  return proc_to_return;
-}
-
-struct proc* find_min_ratio()
-{
-  struct proc* p;
-  struct proc* proc_to_return = 0;
-  int min_ratio = __INT_MAX__;
-  for (p = proc ; p< &proc[NPROC] ; p++)
-  {
-    acquire(&p->lock);
-    int ratio = 0;
-    if (p->rutime != 0)
-      ratio = (p->rutime * p->decay_factor)/(p->rutime+p->stime);
-    if (p->state == RUNNABLE && ratio < min_ratio)
-    {
-      min_ratio = ratio;
-      proc_to_return = p;
-    }
-    release(&p->lock);
-  }
-  return proc_to_return;
-}
-
-//find the first created proccess in RUNNABLE state
-struct proc* find_min_runnable_since()
-{
-  struct proc* p;
-  struct proc* proc_to_return = 0;
-  int min_runnable_since = __INT_MAX__;
-  for (p = proc ; p< &proc[NPROC] ; p++)
-  {
-    acquire(&p->lock);
-    if (p->state == RUNNABLE && p->runnable_since < min_runnable_since)
-    {
-      min_runnable_since = p->runnable_since;
-      proc_to_return = p;
-    }
-    release(&p->lock);
-  }
-  return proc_to_return;
-}
-
-void copy_perf(struct proc* p, struct perf* perf)
-{
-  perf->ctime = p->ctime;
-  perf->ttime = p->ttime;
-  perf->stime = p->stime;
-  perf->retime = p->retime;
-  perf->rutime = p->rutime;
-  perf->average_brusttime = p->average_bursttime;
 }

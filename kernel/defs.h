@@ -8,7 +8,6 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
-struct perf;
 
 // bio.c
 void            binit(void);
@@ -106,15 +105,6 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-int             trace(int, int);
-int             wait_stat(uint64,uint64);
-void            copy_perf(struct proc*, struct perf*);
-struct proc*    find_min_runnable_since();
-struct proc*    find_min_burst();
-struct proc*    find_min_ratio();
-int             set_priority(int);
-struct proc*    pick_process();
-void            alternate_scheduler(void) __attribute__((noreturn));
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -149,7 +139,6 @@ int             argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
-void            print_trace_info(int, int, char*, int, uint64);
 
 // trap.c
 extern uint     ticks;

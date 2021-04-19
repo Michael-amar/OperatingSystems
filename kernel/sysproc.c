@@ -6,9 +6,6 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "kernel/perf.h"
-
-
 
 uint64
 sys_exit(void)
@@ -60,11 +57,11 @@ sys_sleep(void)
 {
   int n;
   uint ticks0;
+
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
   ticks0 = ticks;
-  myproc()->sleeping =1;
   while(ticks - ticks0 < n){
     if(myproc()->killed){
       release(&tickslock);
@@ -72,9 +69,7 @@ sys_sleep(void)
     }
     sleep(&ticks, &tickslock);
   }
-  myproc()->sleeping = 0;
   release(&tickslock);
-  
   return 0;
 }
 
@@ -99,33 +94,4 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
-}
-
-
-uint64
-sys_trace(void){
-  int mask,pid;
-  if(argint(0, &mask) < 0 || argint(1, &pid) < 0){
-    return -1;
-  }
-  return trace(mask, pid);
-}
-
-uint64
-sys_wait_stat(void)
-{
-  uint64 pid;
-  uint64 perf;
-  if(argaddr(0, &pid) < 0 || argaddr(1, &perf) < 0)
-    return -1;
-  return wait_stat(pid,perf);
-}
-
-uint64
-sys_set_priority(void)
-{
-  int n;
-  if(argint(0, &n) < 0)
-    return -1;
-  return set_priority(n);
 }

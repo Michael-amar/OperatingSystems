@@ -3,13 +3,13 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
+
 volatile static int started = 0;
 
 // start() jumps here in supervisor mode on all CPUs.
 void
 main()
 {
-  
   if(cpuid() == 0){
     consoleinit();
     printfinit();
@@ -40,10 +40,6 @@ main()
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
-  #ifdef SCHEDFLAG
-    if (SCHEDFLAG == DEFAULT)
-      scheduler();  
-    else
-      alternate_scheduler();
-  #endif   
+
+  scheduler();        
 }
