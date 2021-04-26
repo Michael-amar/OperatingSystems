@@ -1,0 +1,859 @@
+diff --git a/kernel/defs.h b/kernel/defs.h
+index 1e18377..8b7f1bd 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -8,8 +8,6 @@ struct spinlock;
+ struct sleeplock;
+ struct stat;
+ struct superblock;
+-struct sigaction;
+-struct trapframe;
+ 
+ // bio.c
+ void            binit(void);
+@@ -91,7 +89,7 @@ int             growproc(int);
+ void            proc_mapstacks(pagetable_t);
+ pagetable_t     proc_pagetable(struct proc *);
+ void            proc_freepagetable(pagetable_t, uint64);
+-int             kill(int, int);
++int             kill(int,int);
+ struct cpu*     mycpu(void);
+ struct cpu*     getmycpu(void);
+ struct proc*    myproc();
+@@ -110,7 +108,6 @@ void            procdump(void);
+ uint            sigprocmask(uint);
+ int             sigaction(int, uint64, uint64);
+ void            sigret(void);
+-
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+ 
+@@ -151,13 +148,9 @@ void            trapinit(void);
+ void            trapinithart(void);
+ extern struct spinlock tickslock;
+ void            usertrapret(void);
+-void            kill_handler(struct proc*);
+-void            stop_handler(struct proc*);
+-void            handle_user_signal(struct proc*,int);
+ void            handle_signals(struct proc*);
+-void            add_sigret();
+-void            end_of_add_sigret();
+-void            copy_tf(struct trapframe*, struct trapframe*);
++void            kill_handler(struct proc *);
++void            stop_handler(struct proc*);
+ 
+ 
+ // uart.c
+diff --git a/kernel/exec.c b/kernel/exec.c
+index a086eeb..d9f5263 100644
+--- a/kernel/exec.c
++++ b/kernel/exec.c
+@@ -97,19 +97,21 @@ exec(char *path, char **argv)
+   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
+     goto bad;
+ 
+-  // arguments to user main(argc, argv)
+-  // argc is returned via the system call return
+-  // value, which goes in a0.
+-  p->trapframe->a1 = sp;
+-
+-  //our additions:
+-  for(int i = 0; i < 32; i++)
++  //---------------------our additions--------------
++  for (int i=0; i<NUM_OF_SIGNALS ; i++)
+   {
+-    if(( p->signal_handlers[i] != SIG_DFL) && ( p->signal_handlers[i] != (void*)SIG_IGN))
++    if ((p->signal_handlers[i] != SIG_DFL) && (p->signal_handlers[i] != (void*) SIG_IGN))
+     {
+       p->signal_handlers[i] = SIG_DFL;
++      p->signal_masks[i] = 0;
+     }
+   }
++  //------------------------------------------------
++
++  // arguments to user main(argc, argv)
++  // argc is returned via the system call return
++  // value, which goes in a0.
++  p->trapframe->a1 = sp;
+ 
+   // Save program name for debugging.
+   for(last=s=path; *s; s++)
+@@ -125,7 +127,6 @@ exec(char *path, char **argv)
+   p->trapframe->sp = sp; // initial stack pointer
+   proc_freepagetable(oldpagetable, oldsz);
+ 
+-
+   return argc; // this ends up in a0, the first argument to main(argc, argv)
+ 
+  bad:
+diff --git a/kernel/param.h b/kernel/param.h
+index d9f9ca8..4838889 100644
+--- a/kernel/param.h
++++ b/kernel/param.h
+@@ -11,10 +11,9 @@
+ #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
+ #define FSSIZE       1000  // size of file system in blocks
+ #define MAXPATH      128   // maximum file path name
+-
+-//our additions
+-#define SIG_DFL 0
+-#define SIG_IGN 1
+-#define SIGKILL 9
+-#define SIGSTOP 17
+-#define SIGCONT 19
++#define SIG_DFL       0
++#define SIG_IGN       1
++#define SIGKILL       9
++#define SIGSTOP       17
++#define SIGCONT       19
++#define NUM_OF_SIGNALS 32
+\ No newline at end of file
+diff --git a/kernel/proc.c b/kernel/proc.c
+index def05d8..d89be75 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -121,36 +121,37 @@ found:
+   p->pid = allocpid();
+   p->state = USED;
+ 
+-  //our additions:
+-  p->pending_signals = 0;
+-  for(int i = 0; i < 32; i++)
+-  {
+-    p->signal_handlers[i] = SIG_DFL;
+-    p->signal_masks[i] = 0;
+-  }
+-  p->proc_signal_mask = 0;
+-  p->freezed = 0;
+   // Allocate a trapframe page.
+-  if((p->trapframe_backup = (struct trapframe *)kalloc()) == 0){
++  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+     freeproc(p);
+     release(&p->lock);
+     return 0;
+   }
+ 
+-  // Allocate a trapframe page.
+-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
++  // An empty user page table.
++  p->pagetable = proc_pagetable(p);
++  if(p->pagetable == 0){
+     freeproc(p);
+     release(&p->lock);
+     return 0;
+   }
+ 
+-  // An empty user page table.
+-  p->pagetable = proc_pagetable(p);
+-  if(p->pagetable == 0){
++  //-----------------our additions----------------
++  p->pending_signals = 0;
++  p->proc_signal_mask = 0;
++  for (int i=0 ; i<NUM_OF_SIGNALS ; i++)
++  {
++    p->signal_handlers[i] = SIG_DFL;
++    p->signal_masks[i] = 0;
++  }
++  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
+     freeproc(p);
+     release(&p->lock);
+     return 0;
+   }
++  p->freezed = 0;
++
++  //----------------------------------------------
+ 
+   // Set up new context to start executing at forkret,
+   // which returns to user space.
+@@ -306,14 +307,15 @@ fork(void)
+   }
+   np->sz = p->sz;
+ 
+-  //our additions:
+-  np->proc_signal_mask = 0;
+-  np->pending_signals = p->pending_signals;
++  //-------------------our additions-----------------
++  np->pending_signals = 0;
+   np->proc_signal_mask = p->proc_signal_mask;
+-  for(int i = 0; i < 32; i++)
++  for (int i=0 ; i<NUM_OF_SIGNALS ; i++)
+   {
+     np->signal_handlers[i] = p->signal_handlers[i];
++    np->signal_masks[i] = p->signal_masks[i];
+   }
++  //-------------------------------------------------
+ 
+   // copy saved user registers.
+   *(np->trapframe) = *(p->trapframe);
+@@ -510,10 +512,13 @@ sched(void)
+   if(p->state == RUNNING)
+     panic("sched running");
+   if(intr_get())
+-    panic("sched interruptible");
++  panic("sched interruptible");
+ 
+   intena = mycpu()->intena;
++  printf("in sched before swtch\n");
+   swtch(&p->context, &mycpu()->context);
++  printf("in sched after swtch\n");
++
+   mycpu()->intena = intena;
+ }
+ 
+@@ -521,10 +526,13 @@ sched(void)
+ void
+ yield(void)
+ {
++  printf("in yeild\n");
+   struct proc *p = myproc();
+   acquire(&p->lock);
+   p->state = RUNNABLE;
+   sched();
++  printf("after sched\n");
++
+   release(&p->lock);
+ }
+ 
+@@ -605,15 +613,12 @@ int
+ kill(int pid, int signum)
+ {
+   struct proc *p;
++
+   for(p = proc; p < &proc[NPROC]; p++){
+     acquire(&p->lock);
+     if(p->pid == pid){
+-      uint new_mask = 1 << signum;
+-      p->pending_signals = p->pending_signals | new_mask;
+-      if(p->state == SLEEPING){
+-        // Wake process from sleep().
+-        p->state = RUNNABLE;
+-      }
++      printf("turned on %d for pid %d\n",(1<<signum) , p->pid);
++      p->pending_signals = p->pending_signals | (1<<signum) ; 
+       release(&p->lock);
+       return 0;
+     }
+@@ -681,45 +686,43 @@ procdump(void)
+   }
+ }
+ 
+-//our additions:
++
++//change the proc signal mask to @param:sigmask and return the old one
+ uint sigprocmask(uint sigmask)
+ {
+-  struct proc* p = myproc();
+-  uint old_mask = p->proc_signal_mask;
++  struct proc *p = myproc();
++  uint temp = p->proc_signal_mask;
+   p->proc_signal_mask = sigmask;
+-  return old_mask;
++  return temp;
+ }
+ 
+-int sigaction(int signum, uint64 act, uint64 old_act)
++//edit new signal handler when handeling the @param:signum signal 
++int sigaction(int signum , uint64 act, uint64 old_act)
+ {
+-  if((signum > 32) | (signum < 0) | (signum == SIGKILL)| (signum == SIGSTOP) )
++  struct proc *p = myproc();
++  struct sigaction kold_act;
++  struct sigaction kact;
++  if((signum < 0 ) || (signum >= NUM_OF_SIGNALS) || (signum == SIGKILL) || (signum == SIGSTOP))
+   {
+     return -1;
+   }
+-  struct proc* p = myproc();
+-  struct sigaction kernel_new_act;
+-  struct sigaction kernel_old_act;
+-  if (old_act != 0)
++  if(old_act != 0)
+   {
+-    kernel_old_act.sa_handler = p->signal_handlers[signum];
+-    kernel_old_act.sigmask = p->signal_masks[signum];
+-    copyout(p->pagetable, old_act, (char *)&kernel_old_act, sizeof(kernel_old_act));
++    kold_act.sa_handler = p->signal_handlers[signum];
++    kold_act.sigmask = p->signal_masks[signum];
++    copyout(p->pagetable, old_act, (char*) &kold_act, sizeof(struct sigaction));
+   }
+-  if (act != 0)
++  if(act != 0)
+   {
+-    copyin(p->pagetable,(char*) &kernel_new_act,act, sizeof(kernel_new_act));
+-    p->signal_handlers[signum] = kernel_new_act.sa_handler;
+-    p->signal_masks[signum] = kernel_new_act.sigmask;
++    copyin(p->pagetable, (char*) &kact, act, sizeof(struct sigaction));
++    p->signal_handlers[signum] = kact.sa_handler;
++    p->signal_masks[signum] = kact.sigmask;
+   }
+   return 0;
+ }
+ 
+ void sigret(void)
+ {
+-  //TODO in section 2.4
+-  printf("sigret!!!");
+-  struct proc *p = myproc();
+-  copy_tf(p->trapframe_backup,p->trapframe);
++  printf("in sigret\n");
+   return;
+-}
+-
++}
+\ No newline at end of file
+diff --git a/kernel/proc.h b/kernel/proc.h
+index eb3c356..e0bdfb3 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -106,12 +106,11 @@ struct proc {
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
+ 
+-  //our additions:
++  //---------------------our additions------------------
+   uint pending_signals;
+   uint proc_signal_mask;
+-  void* signal_handlers[32];
+-  uint signal_masks[32];
+-  struct trapframe *trapframe_backup;
++  void *signal_handlers[NUM_OF_SIGNALS];
++  uint signal_masks[NUM_OF_SIGNALS];
++  struct trapframe *tf_backup;
+   int freezed;
+-
+ };
+diff --git a/kernel/sigaction.h b/kernel/sigaction.h
+index 61a1cd0..fef16e5 100644
+--- a/kernel/sigaction.h
++++ b/kernel/sigaction.h
+@@ -1,4 +1,6 @@
++#include "kernel/types.h"
++
+ struct sigaction {
+-  void (*sa_handler) (int);
+-  uint sigmask;
+-};
++    void (*sa_handler) (int);
++    uint sigmask;
++};
+\ No newline at end of file
+diff --git a/kernel/string.c b/kernel/string.c
+index a896640..d99e612 100644
+--- a/kernel/string.c
++++ b/kernel/string.c
+@@ -1,11 +1,4 @@
+ #include "types.h"
+-#include "param.h"
+-#include "memlayout.h"
+-#include "riscv.h"
+-#include "spinlock.h"
+-#include "proc.h"
+-#include "defs.h"
+-#include "sigaction.h"
+ 
+ void*
+ memset(void *dst, int c, uint n)
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index 3260135..20156b3 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -109,30 +109,30 @@ extern uint64 sys_sigaction(void);
+ extern uint64 sys_sigret(void);
+ 
+ static uint64 (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
+-[SYS_sigprocmask] sys_sigprocmask,
+-[SYS_sigaction]   sys_sigaction,
+-[SYS_sigret]  sys_sigret,
++[SYS_fork]          sys_fork,
++[SYS_exit]          sys_exit,
++[SYS_wait]          sys_wait,
++[SYS_pipe]          sys_pipe,
++[SYS_read]          sys_read,
++[SYS_kill]          sys_kill,
++[SYS_exec]          sys_exec,
++[SYS_fstat]         sys_fstat,
++[SYS_chdir]         sys_chdir,
++[SYS_dup]           sys_dup,
++[SYS_getpid]        sys_getpid,
++[SYS_sbrk]          sys_sbrk,
++[SYS_sleep]         sys_sleep,
++[SYS_uptime]        sys_uptime,
++[SYS_open]          sys_open,
++[SYS_write]         sys_write,
++[SYS_mknod]         sys_mknod,
++[SYS_unlink]        sys_unlink,
++[SYS_link]          sys_link,
++[SYS_mkdir]         sys_mkdir,
++[SYS_close]         sys_close,
++[SYS_sigprocmask]   sys_sigprocmask,
++[SYS_sigaction]     sys_sigaction,
++[SYS_sigret]        sys_sigret,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index ff42bcb..ea2a4d4 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -8,18 +8,18 @@
+ #define SYS_exec         7
+ #define SYS_fstat        8
+ #define SYS_chdir        9
+-#define SYS_dup         10
+-#define SYS_getpid      11
+-#define SYS_sbrk        12
+-#define SYS_sleep       13
+-#define SYS_uptime      14
+-#define SYS_open        15
+-#define SYS_write       16
+-#define SYS_mknod       17
+-#define SYS_unlink      18
+-#define SYS_link        19
+-#define SYS_mkdir       20
+-#define SYS_close       21
+-#define SYS_sigprocmask 22
+-#define SYS_sigaction   23
+-#define SYS_sigret      24
+\ No newline at end of file
++#define SYS_dup          10
++#define SYS_getpid       11
++#define SYS_sbrk         12
++#define SYS_sleep        13
++#define SYS_uptime       14
++#define SYS_open         15
++#define SYS_write        16
++#define SYS_mknod        17
++#define SYS_unlink       18
++#define SYS_link         19
++#define SYS_mkdir        20
++#define SYS_close        21
++#define SYS_sigprocmask  22
++#define SYS_sigaction    23
++#define SYS_sigret       24
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3dff547..48ed211 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -76,10 +76,12 @@ sys_sleep(void)
+ uint64
+ sys_kill(void)
+ {
+-  int pid, signum;
++  int pid;
++  int signum; 
++
+   if((argint(0, &pid) < 0) || (argint(1, &signum) < 0))
+     return -1;
+-  return kill(pid, signum);
++  return kill(pid,signum);
+ }
+ 
+ // return how many clock tick interrupts have occurred
+@@ -99,7 +101,6 @@ uint64
+ sys_sigprocmask(void)
+ {
+   int sigmask;
+-
+   if(argint(0, &sigmask) < 0)
+     return -1;
+   return sigprocmask(sigmask);
+@@ -109,10 +110,11 @@ uint64
+ sys_sigaction(void)
+ {
+   int signum;
+-  uint64 act,oldact;
+-  if((argint(0, &signum) < 0) || (argaddr(1, &act) < 0) || (argaddr(2, &oldact) < 0))
++  uint64 new_act, old_act;
++
++  if( (argint(0, &signum) < 0) || (argaddr(1, &new_act) < 0) ||(argaddr(2, &old_act) < 0 ))
+     return -1;
+-  return sigaction(signum, act, oldact);
++  return sigaction(signum, new_act, old_act);
+ }
+ 
+ uint64
+diff --git a/kernel/trap.c b/kernel/trap.c
+index 9694d2e..c44f07d 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -5,7 +5,6 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ #include "defs.h"
+-#include "sigaction.h"
+ 
+ struct spinlock tickslock;
+ uint ticks;
+@@ -91,8 +90,6 @@ void
+ usertrapret(void)
+ {
+   struct proc *p = myproc();
+-  
+-  
+ 
+   // we're about to switch the destination of traps from
+   // kerneltrap() to usertrap(), so turn off interrupts until
+@@ -102,7 +99,6 @@ usertrapret(void)
+   // send syscalls, interrupts, and exceptions to trampoline.S
+   w_stvec(TRAMPOLINE + (uservec - trampoline));
+ 
+-
+   // set up trapframe values that uservec will need when
+   // the process next re-enters the kernel.
+   p->trapframe->kernel_satp = r_satp();         // kernel page table
+@@ -112,22 +108,20 @@ usertrapret(void)
+ 
+   // set up the registers that trampoline.S's sret will use
+   // to get to user space.
+-
+   
+-
+   // set S Previous Privilege mode to User.
+   unsigned long x = r_sstatus();
+   x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+   x |= SSTATUS_SPIE; // enable interrupts in user mode
+   w_sstatus(x);
+ 
+-
+   // set S Exception Program Counter to the saved user pc.
+   w_sepc(p->trapframe->epc);
+ 
+-  //our addition:
++  //--------------our additions--------------
+   handle_signals(p);
+-
++  //-----------------------------------------
++  
+   // tell trampoline.S the user page table to switch to.
+   uint64 satp = MAKE_SATP(p->pagetable);
+ 
+@@ -228,90 +222,60 @@ devintr()
+   }
+ }
+ 
+-//our additions:
+-
+-void handle_signals(struct proc *p)
++void handle_signals(struct proc* p)
+ {
+-  for (int signum = 0; signum < 32; signum++)
++  for (int signum=0 ; signum<NUM_OF_SIGNALS ; signum++)
+   {
+     if ((p->pending_signals & (1 << signum)) != 0)
+     {
+-      printf("pending signals:%d\n",p->pending_signals);
+-      p->pending_signals = p->pending_signals ^ (1 << signum);
+-      printf("pid:%d , handling signal:%d\n",p->pid,signum);
+-      switch (signum)
++      p->pending_signals = p->pending_signals ^ (1<<signum);
++      switch(signum)
+       {
+-      case SIGKILL:
+-        kill_handler(p);
+-        break;
+-      case SIGSTOP:
+-        stop_handler(p);
+-        break;
+-      case SIGCONT:
+-        break;
+-      default:
+-        if (p->signal_handlers[signum] == SIG_DFL)
+-        {
++        case SIGKILL:
+           kill_handler(p);
+-        }
+-        else
+-          handle_user_signal(p, signum);
+-        break;
++          break;
++        case SIGSTOP:
++          stop_handler(p);
++          break;
++        case SIGCONT:
++          break;
++        default:
++          break;
+       }
+     }
+   }
+ }
+ 
+-void handle_user_signal(struct proc *p, int signum)
+-{
+-  printf("handle user signal\n");
+-  copy_tf(p->trapframe,p->trapframe_backup);
+-  void* func =  p->signal_handlers[signum];
+-  p->trapframe->epc = (uint64) func;
+-  uint func_size = end_of_add_sigret - add_sigret ;
+-  p->trapframe->sp = p->trapframe->sp - func_size;
+-  p->trapframe->ra = p->trapframe->sp;
+-  memmove((void*)p->trapframe->sp,(void*)add_sigret,func_size);
+-  printf("out");
+-  //copyout(p->pagetable,p->trapframe->sp,(char*) add_sigret,20);
+-  w_sepc(p->trapframe->epc);
+-  return;
+-}
+-
+-
+ void kill_handler(struct proc *p)
+ {
+-  printf("in kill handler");
++  acquire(&p->lock);
+   p->killed = 1;
+   if(p->state == SLEEPING)
+-  {
+     p->state = RUNNABLE;
+-  }
++  release(&p->lock);
+ }
+ 
+-void stop_handler(struct proc* p)
++void stop_handler(struct proc *p)
+ {
+-  printf("in stop signal handler\n");
+-  p->freezed =1;
+-  while (p->freezed != 0)
++  printf("in stop handler\n");
++  acquire(&p->lock);
++  p->freezed = 1;
++  while (p->freezed == 1)
+   {
+-    if((p->pending_signals & 1 << SIGCONT) != 0)
++    if ((p->pending_signals & (1<<SIGCONT)) != 0)
++    {
+       p->freezed = 0;
+-    else 
++    }
++    else
++    {
++      printf("yielding\n");
++      release(&p->lock);
+       yield();
++    }
+   }
+-}
++  printf("exited stop handler\n");
++  release(&p->lock);
+ 
+-void add_sigret()
+-{
+-  asm("li a7, 24\n");
+-  asm("ecall\n");
+-  asm("ret\n");
+ }
+-void end_of_add_sigret(){}
+ 
+ 
+-void copy_tf(struct trapframe* src, struct trapframe* dst)
+-{
+-  memmove(dst,src,sizeof(struct trapframe));
+-}
+diff --git a/user/grind.c b/user/grind.c
+index c1b82e5..085583c 100644
+--- a/user/grind.c
++++ b/user/grind.c
+@@ -325,7 +325,7 @@ iter()
+   wait(&st1);
+   if(st1 != 0){
+     kill(pid1,SIGKILL);
+-    kill(pid2, SIGKILL);
++    kill(pid2,SIGKILL);
+   }
+   int st2 = -1;
+   wait(&st2);
+diff --git a/user/kill.c b/user/kill.c
+index e9abbc8..f8765ed 100644
+--- a/user/kill.c
++++ b/user/kill.c
+@@ -7,12 +7,11 @@ main(int argc, char **argv)
+ {
+   int i;
+ 
+-  if(argc < 2){
++  if((argc < 2) || (argc %2 != 1)){
+     fprintf(2, "usage: kill pid...\n");
+     exit(1);
+   }
+-  int signal = atoi(argv[argc - 1]);
+-  for(i=1; i<argc; i++)
+-    kill(atoi(argv[i]),signal);
++  for(i=1; i<argc-1; i+=2)
++    kill(atoi(argv[i]),atoi(argv[i+1]));
+   exit(0);
+ }
+diff --git a/user/test.c b/user/test.c
+index 17439e2..ba98a44 100644
+--- a/user/test.c
++++ b/user/test.c
+@@ -1,56 +1,77 @@
+ #include "kernel/types.h"
+ #include "user/user.h"
+ #include "kernel/fcntl.h"
++#include "kernel/param.h"
+ #include "kernel/sigaction.h"
+-
+-void func(int a)
+-{
+-    printf("hello world");
+-}
+-void func2()
++void test_sigprocmask1()
+ {
+-    sleep(15);
+-    printf("hello world\n");
+-    return;
++    uint a = sigprocmask(6);
++    uint b = sigprocmask(7);
++    if ((a == 0) && (b == 6))
++    {
++        printf("test_sigprocmask1:OK\n");
++    }
++    else{
++        printf("test_sigprocmask1:FAIL\n");
++        printf("a:%d , b:%d\n" , a,b);
++    }
+ }
+ 
+-void func3()
++void test_sigprocmask2()
+ {
+-    printf("hello from func 3\n");
+-    return;
++    uint a = sigaction(SIGKILL,0,0);
++    uint b = sigaction(SIGSTOP,0,0);
++    if ((a == -1) && (b == -1))
++    {
++        printf("test_sigprocmask2:OK\n");
++    }
++    else{
++        printf("test_sigprocmask2:FAIL\n");
++        printf("a:%d , b:%d\n" , a,b);
++    }
+ }
+ 
+-
+-int main(int argc, char** argv)
++void test_sigkill()
+ {
++    //int pid = fork();
+ 
++}
++void test_sigaction()
++{
++    struct sigaction a;
++    struct sigaction b;
++    a.sa_handler = (void*) 1234;
++    a.sigmask = 789;
++    sigaction(6,&a,0);
++    sigaction(6,0,&b);
++    if(b.sa_handler == (void*) 1234 && b.sigmask == 789)
++    {
++      printf("test_sigaction:OK\n");
++    }
++    else{
++        printf("test_sigaction:FAIL\n");
++    }
++}
+ 
+-    struct sigaction act;
+-    act.sa_handler = func2;
+ 
+-    //struct sigaction act2;
+-    //act2.sa_handler = func3;
+-    sigaction(3, &act , 0);
+-    //sigaction(8, &act2 , 0);
++int main()
++{
++    // test_sigprocmask1();
++    // test_sigprocmask2();
++    // test_sigaction();
+     int pid = fork();
+     if (pid == 0)
+     {
+-        sleep(30);
+-        printf("in child\n");
+-        while (1)
++        while(1)
+         {
+             sleep(20);
+-            printf("child");
++            printf("child\n");
+         }
+     }
+-    else
+-    {
+-        sleep(1);
+-        printf("child pid:%d\n",pid);
+-        kill(pid , 3);
+-        //kill(pid , 8);
+-        printf("sent both kills\n");
++    else{
++        printf("child:%d\n",pid);
+     }
++
+     exit(0);
+     return 0;
+-}  
+\ No newline at end of file
++}
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index 8f79d31..e4bf7e7 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -10,7 +10,7 @@ int pipe(int*);
+ int write(int, const void*, int);
+ int read(int, void*, int);
+ int close(int);
+-int kill(int, int);
++int kill(int,int);
+ int exec(char*, char**);
+ int open(const char*, int);
+ int mknod(const char*, short, short);
+@@ -24,12 +24,11 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+-
+-//our addiotions:
+ uint sigprocmask(uint);
+ int sigaction(int, struct sigaction*, struct sigaction*);
+ void sigret(void);
+ 
++
+ // ulib.c
+ int stat(const char*, struct stat*);
+ char* strcpy(char*, const char*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 4509524..836c7fe 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -38,4 +38,4 @@ entry("sleep");
+ entry("uptime");
+ entry("sigprocmask");
+ entry("sigaction");
+-entry("sigret");
++entry("sigret");
+\ No newline at end of file

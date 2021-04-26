@@ -224,6 +224,7 @@ devintr()
 
 void handle_signals(struct proc* p)
 {
+  int temp = 0;
   for (int signum=0 ; signum<NUM_OF_SIGNALS ; signum++)
   {
     if ((p->pending_signals & (1 << signum)) != 0)
@@ -236,6 +237,7 @@ void handle_signals(struct proc* p)
           break;
         case SIGSTOP:
           stop_handler(p);
+          temp = 1 ;
           break;
         case SIGCONT:
           break;
@@ -244,6 +246,13 @@ void handle_signals(struct proc* p)
       }
     }
   }
+  if (temp)
+  {
+    printf("finished checking signals after stop_handler\n");
+    printf("pending:%d\n",p->pending_signals);
+    printf("killed:%d\n",p->killed);
+  }
+  return;
 }
 
 void kill_handler(struct proc *p)
@@ -257,8 +266,7 @@ void kill_handler(struct proc *p)
 
 void stop_handler(struct proc *p)
 {
-  printf("in stop handler\n");
-  acquire(&p->lock);
+  printf("in stop handler state:%d\n",p->state);
   p->freezed = 1;
   while (p->freezed == 1)
   {
@@ -268,14 +276,10 @@ void stop_handler(struct proc *p)
     }
     else
     {
-      printf("yielding\n");
-      release(&p->lock);
       yield();
     }
   }
   printf("exited stop handler\n");
-  release(&p->lock);
-
 }
 
 

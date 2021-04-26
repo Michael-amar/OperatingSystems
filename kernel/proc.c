@@ -128,6 +128,11 @@ found:
     return 0;
   }
 
+  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -144,11 +149,7 @@ found:
     p->signal_handlers[i] = SIG_DFL;
     p->signal_masks[i] = 0;
   }
-  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
+  
   p->freezed = 0;
 
   //----------------------------------------------
@@ -515,9 +516,7 @@ sched(void)
   panic("sched interruptible");
 
   intena = mycpu()->intena;
-  printf("in sched before swtch\n");
   swtch(&p->context, &mycpu()->context);
-  printf("in sched after swtch\n");
 
   mycpu()->intena = intena;
 }
@@ -526,13 +525,10 @@ sched(void)
 void
 yield(void)
 {
-  printf("in yeild\n");
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
   sched();
-  printf("after sched\n");
-
   release(&p->lock);
 }
 
@@ -618,7 +614,8 @@ kill(int pid, int signum)
     acquire(&p->lock);
     if(p->pid == pid){
       printf("turned on %d for pid %d\n",(1<<signum) , p->pid);
-      p->pending_signals = p->pending_signals | (1<<signum) ; 
+      uint new_mask = (1<<signum);
+      p->pending_signals = p->pending_signals | new_mask ; 
       release(&p->lock);
       return 0;
     }
