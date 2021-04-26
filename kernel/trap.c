@@ -90,11 +90,14 @@ void
 usertrapret(void)
 {
   struct proc *p = myproc();
+      
+
 
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
   intr_off();
+  handle_signals(p);
 
   // send syscalls, interrupts, and exceptions to trampoline.S
   w_stvec(TRAMPOLINE + (uservec - trampoline));
@@ -118,10 +121,7 @@ usertrapret(void)
   // set S Exception Program Counter to the saved user pc.
   w_sepc(p->trapframe->epc);
 
-  //--------------our additions--------------
-  handle_signals(p);
-  //-----------------------------------------
-  
+
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
 
