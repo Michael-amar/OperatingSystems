@@ -118,6 +118,10 @@ usertrapret(void)
   // set S Exception Program Counter to the saved user pc.
   w_sepc(p->trapframe->epc);
 
+  //--------------our additions--------------
+  handle_signals(p);
+  //-----------------------------------------
+  
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
 
@@ -217,4 +221,61 @@ devintr()
     return 0;
   }
 }
+
+void handle_signals(struct proc* p)
+{
+  for (int signum=0 ; signum<NUM_OF_SIGNALS ; signum++)
+  {
+    if ((p->pending_signals & (1 << signum)) != 0)
+    {
+      p->pending_signals = p->pending_signals ^ (1<<signum);
+      switch(signum)
+      {
+        case SIGKILL:
+          kill_handler(p);
+          break;
+        case SIGSTOP:
+          stop_handler(p);
+          break;
+        case SIGCONT:
+          break;
+        default:
+          break;
+      }
+    }
+  }
+}
+
+void kill_handler(struct proc *p)
+{
+  acquire(&p->lock);
+  p->killed = 1;
+  if(p->state == SLEEPING)
+    p->state = RUNNABLE;
+  release(&p->lock);
+}
+
+void stop_handler(struct proc *p)
+{
+  printf("in stop handler\n");
+  acquire(&p->lock);
+  p->freezed = 1;
+  while (p->freezed == 1)
+  {
+    if ((p->pending_signals & (1<<SIGCONT)) != 0)
+    {
+      p->freezed = 0;
+    }
+    else
+    {
+      printf("yielding\n");
+      release(&p->lock);
+      yield();
+    }
+  }
+  printf("exited stop handler\n");
+  release(&p->lock);
+
+}
+
 

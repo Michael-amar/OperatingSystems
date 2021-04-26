@@ -105,4 +105,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  //---------------------our additions------------------
+  uint pending_signals;
+  uint proc_signal_mask;
+  void *signal_handlers[NUM_OF_SIGNALS];
+  uint signal_masks[NUM_OF_SIGNALS];
+  struct trapframe *tf_backup;
+  int freezed;
 };

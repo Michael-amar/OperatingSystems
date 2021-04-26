@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sigaction.h"
 
 struct cpu cpus[NCPU];
 
@@ -134,6 +135,23 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  //-----------------our additions----------------
+  p->pending_signals = 0;
+  p->proc_signal_mask = 0;
+  for (int i=0 ; i<NUM_OF_SIGNALS ; i++)
+  {
+    p->signal_handlers[i] = SIG_DFL;
+    p->signal_masks[i] = 0;
+  }
+  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->freezed = 0;
+
+  //----------------------------------------------
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -288,6 +306,16 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+
+  //-------------------our additions-----------------
+  np->pending_signals = 0;
+  np->proc_signal_mask = p->proc_signal_mask;
+  for (int i=0 ; i<NUM_OF_SIGNALS ; i++)
+  {
+    np->signal_handlers[i] = p->signal_handlers[i];
+    np->signal_masks[i] = p->signal_masks[i];
+  }
+  //-------------------------------------------------
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -484,10 +512,13 @@ sched(void)
   if(p->state == RUNNING)
     panic("sched running");
   if(intr_get())
-    panic("sched interruptible");
+  panic("sched interruptible");
 
   intena = mycpu()->intena;
+  printf("in sched before swtch\n");
   swtch(&p->context, &mycpu()->context);
+  printf("in sched after swtch\n");
+
   mycpu()->intena = intena;
 }
 
@@ -495,10 +526,13 @@ sched(void)
 void
 yield(void)
 {
+  printf("in yeild\n");
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
   sched();
+  printf("after sched\n");
+
   release(&p->lock);
 }
 
@@ -576,18 +610,15 @@ wakeup(void *chan)
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
 int
-kill(int pid)
+kill(int pid, int signum)
 {
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
-      p->killed = 1;
-      if(p->state == SLEEPING){
-        // Wake process from sleep().
-        p->state = RUNNABLE;
-      }
+      printf("turned on %d for pid %d\n",(1<<signum) , p->pid);
+      p->pending_signals = p->pending_signals | (1<<signum) ; 
       release(&p->lock);
       return 0;
     }
@@ -653,4 +684,45 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+//change the proc signal mask to @param:sigmask and return the old one
+uint sigprocmask(uint sigmask)
+{
+  struct proc *p = myproc();
+  uint temp = p->proc_signal_mask;
+  p->proc_signal_mask = sigmask;
+  return temp;
+}
+
+//edit new signal handler when handeling the @param:signum signal 
+int sigaction(int signum , uint64 act, uint64 old_act)
+{
+  struct proc *p = myproc();
+  struct sigaction kold_act;
+  struct sigaction kact;
+  if((signum < 0 ) || (signum >= NUM_OF_SIGNALS) || (signum == SIGKILL) || (signum == SIGSTOP))
+  {
+    return -1;
+  }
+  if(old_act != 0)
+  {
+    kold_act.sa_handler = p->signal_handlers[signum];
+    kold_act.sigmask = p->signal_masks[signum];
+    copyout(p->pagetable, old_act, (char*) &kold_act, sizeof(struct sigaction));
+  }
+  if(act != 0)
+  {
+    copyin(p->pagetable, (char*) &kact, act, sizeof(struct sigaction));
+    p->signal_handlers[signum] = kact.sa_handler;
+    p->signal_masks[signum] = kact.sigmask;
+  }
+  return 0;
+}
+
+void sigret(void)
+{
+  printf("in sigret\n");
+  return;
 }

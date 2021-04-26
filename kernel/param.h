@@ -11,3 +11,9 @@
 #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
+#define SIG_DFL       0
+#define SIG_IGN       1
+#define SIGKILL       9
+#define SIGSTOP       17
+#define SIGCONT       19
+#define NUM_OF_SIGNALS 32

@@ -97,6 +97,17 @@ exec(char *path, char **argv)
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
 
+  //---------------------our additions--------------
+  for (int i=0; i<NUM_OF_SIGNALS ; i++)
+  {
+    if ((p->signal_handlers[i] != SIG_DFL) && (p->signal_handlers[i] != (void*) SIG_IGN))
+    {
+      p->signal_handlers[i] = SIG_DFL;
+      p->signal_masks[i] = 0;
+    }
+  }
+  //------------------------------------------------
+
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
