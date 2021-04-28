@@ -228,24 +228,56 @@ void handle_signals()
   struct proc* p = myproc();
   for (int signum=0 ; signum<NUM_OF_SIGNALS ; signum++)
   {
-    if ((p->pending_signals & (1 << signum)) != 0)
+    if ( (p->proc_signal_mask & (1<<signum)) == 0)
     {
-      p->pending_signals = p->pending_signals ^ (1<<signum);
-      switch(signum)
+      if ((p->pending_signals & (1 << signum)) != 0)
       {
-        case SIGKILL:
-          kill_handler(signum);
-          break;
-        case SIGSTOP:
-          stop_handler(signum);
-          break;
-        case SIGCONT:
-          break;
-        default:
-          break;
+        p->pending_signals = p->pending_signals ^ (1<<signum);
+        switch(signum)
+        {
+          case SIGKILL:
+            kill_handler(signum);
+            break;
+          case SIGSTOP:
+            stop_handler(signum);
+            break;
+          case SIGCONT:
+            break;
+          case SIG_IGN:
+            break;
+          default:
+            user_handler(signum);
+            break;
+        }
       }
     }
   }
+}
+
+void user_handler(int signum)
+{
+  struct proc* p = myproc();
+  if (p->signal_handling == 0)
+  {
+    copy_tf(p->tf_backup,p->trapframe);
+    uint func_size = end_call_sigret - call_sigret;
+    p->signal_mask_backup = p->proc_signal_mask;
+    p->proc_signal_mask = p->signal_masks[signum];
+    p->signal_handling = 1;
+    p->trapframe->sp -= sizeof(struct trapframe);
+    p->tf_backup->sp = p->trapframe->sp;
+    copyout(p->pagetable , p->tf_backup->sp , (char*) p->trapframe , sizeof(struct trapframe));
+    p->trapframe->epc = (uint64) p->signal_handlers[signum];
+    p->trapframe->sp -= func_size;
+    copyout(p->pagetable , p->trapframe->sp ,(char*) call_sigret , func_size);
+    p->trapframe->a0 = signum;
+    p->trapframe->ra = p->trapframe->sp;
+  }
+  else
+  {
+    p->pending_signals = p->pending_signals ^ (1<<signum);
+  }
+
 }
 
 void kill_handler(int signum)
@@ -275,4 +307,16 @@ void stop_handler(int signum)
   }
 }
 
+void call_sigret()
+{
+  asm("li a7,24");
+  asm("ecall");
+  asm("ret");
+}
 
+void end_call_sigret(){}
+
+void copy_tf(struct trapframe* dst,  struct trapframe* src)
+{
+  memmove((void*)dst,(void*)src,sizeof(struct trapframe));
+}

@@ -8,6 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct trapframe;
 
 // bio.c
 void            binit(void);
@@ -151,6 +152,11 @@ void            usertrapret(void);
 void            handle_signals();
 void            kill_handler(int);
 void            stop_handler(int);
+void            call_sigret(void);
+void            end_call_sigret(void);
+void            user_handler(int);
+void            copy_tf(struct trapframe*,  struct trapframe*);
+
 
 
 // uart.c

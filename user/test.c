@@ -2,7 +2,7 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 #include "kernel/param.h"
-#include "kernel/sigaction.h"
+#include "sigaction.h"
 void test_sigprocmask1()
 {
     uint a = sigprocmask(6);
@@ -53,25 +53,55 @@ void test_sigaction()
     }
 }
 
+int wait_sig = 0;
+
+
+void func(int signum)
+{
+    printf("test\n");
+}
+
+
+void func2(int signum)
+{
+    printf("got signal:%d\n" , signum);
+    return;
+}
+
+
+void test_handler(int signum)
+{
+    wait_sig = 1;
+    printf("Received sigtest\n");
+}
+
+
+
 
 int main()
 {
     // test_sigprocmask1();
     // test_sigprocmask2();
     // test_sigaction();
-    int pid = fork();
-    if (pid == 0)
-    {
-        while(1)
-        {
-            sleep(20);
-            printf("child\n");
-        }
-    }
-    else{
-        printf("child:%d\n",pid);
-    }
+    func(5);
+    func2(2);
+    int pid;
+    int testsig;
+    testsig=15;
+    printf("test_handler:%p\nfunc:%d\nfunc2:%p\n",test_handler,func,func2);
+    struct sigaction act = {test_handler, (uint)(1 << 29)};
+    struct sigaction old;
 
+    sigprocmask(0);
+    sigaction(testsig, &act, &old);
+    if((pid = fork()) == 0){
+        while(!wait_sig)
+            sleep(1);
+        exit(0);
+    }
+    kill(pid, testsig);
+    wait(&pid);
+    printf("Finished testing signals\n");
     exit(0);
-    return 0;
+    return 1;
 }

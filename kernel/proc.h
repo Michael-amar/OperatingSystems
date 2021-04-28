@@ -112,6 +112,7 @@ struct proc {
   uint proc_signal_mask;
   void *signal_handlers[NUM_OF_SIGNALS];
   uint signal_masks[NUM_OF_SIGNALS];
-  
   int freezed;
+  uint signal_mask_backup;
+  uint signal_handling;
 };

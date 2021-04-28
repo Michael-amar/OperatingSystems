@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "sigaction.h"
+#include "user/sigaction.h"
 
 struct cpu cpus[NCPU];
 
@@ -149,7 +149,7 @@ found:
     p->signal_handlers[i] = SIG_DFL;
     p->signal_masks[i] = 0;
   }
-  
+  p->signal_handling = 0;
   p->freezed = 0;
 
   //----------------------------------------------
@@ -171,6 +171,8 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+  if(p->tf_backup)
+    kfree((void*)p->tf_backup);
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -613,7 +615,6 @@ kill(int pid, int signum)
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
-      printf("turned on %d for pid %d\n",(1<<signum) , p->pid);
       uint new_mask = (1<<signum);
       p->pending_signals = p->pending_signals | new_mask ; 
       release(&p->lock);
@@ -712,6 +713,11 @@ int sigaction(int signum , uint64 act, uint64 old_act)
   if(act != 0)
   {
     copyin(p->pagetable, (char*) &kact, act, sizeof(struct sigaction));
+    uint invalid_mask = (1<<SIGKILL) | (1<<SIGSTOP);
+    if ((kact.sigmask & invalid_mask) != 0)
+    {
+      return -1;
+    }
     p->signal_handlers[signum] = kact.sa_handler;
     p->signal_masks[signum] = kact.sigmask;
   }
@@ -720,6 +726,8 @@ int sigaction(int signum , uint64 act, uint64 old_act)
 
 void sigret(void)
 {
-  printf("in sigret\n");
-  return;
+  struct proc* p = myproc();
+  copy_tf(p->trapframe,p->tf_backup);
+  p->proc_signal_mask = p->signal_mask_backup;
+  p->signal_handling = 0; 
 }
