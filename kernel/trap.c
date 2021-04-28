@@ -97,7 +97,8 @@ usertrapret(void)
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
   intr_off();
-  handle_signals(p);
+
+  handle_signals();
 
   // send syscalls, interrupts, and exceptions to trampoline.S
   w_stvec(TRAMPOLINE + (uservec - trampoline));
@@ -222,9 +223,9 @@ devintr()
   }
 }
 
-void handle_signals(struct proc* p)
+void handle_signals()
 {
-  int temp = 0;
+  struct proc* p = myproc();
   for (int signum=0 ; signum<NUM_OF_SIGNALS ; signum++)
   {
     if ((p->pending_signals & (1 << signum)) != 0)
@@ -233,11 +234,10 @@ void handle_signals(struct proc* p)
       switch(signum)
       {
         case SIGKILL:
-          kill_handler(p);
+          kill_handler(signum);
           break;
         case SIGSTOP:
-          stop_handler(p);
-          temp = 1 ;
+          stop_handler(signum);
           break;
         case SIGCONT:
           break;
@@ -246,17 +246,11 @@ void handle_signals(struct proc* p)
       }
     }
   }
-  if (temp)
-  {
-    printf("finished checking signals after stop_handler\n");
-    printf("pending:%d\n",p->pending_signals);
-    printf("killed:%d\n",p->killed);
-  }
-  return;
 }
 
-void kill_handler(struct proc *p)
+void kill_handler(int signum)
 {
+  struct proc* p = myproc();
   acquire(&p->lock);
   p->killed = 1;
   if(p->state == SLEEPING)
@@ -264,9 +258,9 @@ void kill_handler(struct proc *p)
   release(&p->lock);
 }
 
-void stop_handler(struct proc *p)
+void stop_handler(int signum)
 {
-  printf("in stop handler state:%d\n",p->state);
+  struct proc* p = myproc();
   p->freezed = 1;
   while (p->freezed == 1)
   {
@@ -279,7 +273,6 @@ void stop_handler(struct proc *p)
       yield();
     }
   }
-  printf("exited stop handler\n");
 }
 
 

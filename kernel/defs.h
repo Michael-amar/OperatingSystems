@@ -148,9 +148,9 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
-void            handle_signals(struct proc*);
-void            kill_handler(struct proc *);
-void            stop_handler(struct proc*);
+void            handle_signals();
+void            kill_handler(int);
+void            stop_handler(int);
 
 
 // uart.c
