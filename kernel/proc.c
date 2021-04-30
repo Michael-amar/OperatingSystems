@@ -27,6 +27,7 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
@@ -48,12 +49,19 @@ void
 procinit(void)
 {
   struct proc *p;
-  
+  struct thread* t;
+
+  threadinit();
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
+  for(p = proc; p < &proc[NPROC]; p++) 
+  {
       initlock(&p->lock, "proc");
-      p->kstack = KSTACK((int) (p - proc));
+      for( t = p->threads ; t < &p->threads[NTHREAD] ; t++)
+      {
+        initlock(&t->lock, "thread");
+        t->kstack = KSTACK((int) (t - p->threads));
+      }
   }
 }
 
@@ -81,7 +89,7 @@ struct proc*
 myproc(void) {
   push_off();
   struct cpu *c = mycpu();
-  struct proc *p = c->proc;
+  struct proc *p = c->thread->parent;
   pop_off();
   return p;
 }
@@ -118,22 +126,25 @@ allocproc(void)
   return 0;
 
 found:
+  struct thread* t;
   p->pid = allocpid();
   p->state = USED;
-
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+  
+  // Allocate a trapframes page.
+  if((p->trapframes = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
-    release(&p->lock);
+    release(&t->lock);
     return 0;
   }
 
-  if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
+  // if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
+  //   freeproc(p);
+  //   release(&p->lock);
+  //   return 0;
+  // }
+
   // An empty user page table.
+
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
     freeproc(p);
@@ -151,14 +162,17 @@ found:
   }
   p->signal_handling = 0;
   p->freezed = 0;
-
   //----------------------------------------------
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+  // memset(&p->context, 0, sizeof(p->context));
+  // p->context.ra = (uint64)forkret;
+  // p->context.sp = p->kstack + PGSIZE;
+
+  struct thread* t = allocthread(p);
+  p->init_thread = t;
+  t->context.ra = (uint64)forkret;
 
   return p;
 }
@@ -169,11 +183,11 @@ found:
 static void
 freeproc(struct proc *p)
 {
-  if(p->trapframe)
-    kfree((void*)p->trapframe);
-  if(p->tf_backup)
-    kfree((void*)p->tf_backup);
-  p->trapframe = 0;
+  // if(p->trapframe)
+  //   kfree((void*)p->trapframe);
+  // if(p->tf_backup)
+  //   kfree((void*)p->tf_backup);
+  // p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -181,7 +195,7 @@ freeproc(struct proc *p)
   p->pid = 0;
   p->parent = 0;
   p->name[0] = 0;
-  p->chan = 0;
+  // p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
@@ -211,7 +225,7 @@ proc_pagetable(struct proc *p)
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
-              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+              (uint64)(p->trapframes), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
@@ -257,13 +271,13 @@ userinit(void)
   p->sz = PGSIZE;
 
   // prepare for the very first "return" from kernel to user.
-  p->trapframe->epc = 0;      // user program counter
-  p->trapframe->sp = PGSIZE;  // user stack pointer
+  p->init_thread->trapframe->epc = 0;      // user program counter
+  p->init_thread->trapframe->sp = PGSIZE;  // user stack pointer
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
-  p->state = RUNNABLE;
+  p->init_thread->state = RUNNABLE;
 
   release(&p->lock);
 }
@@ -319,12 +333,12 @@ fork(void)
     np->signal_masks[i] = p->signal_masks[i];
   }
   //-------------------------------------------------
-
+  struct thread *t = my_thread();
   // copy saved user registers.
-  *(np->trapframe) = *(p->trapframe);
+  *(np->init_thread->trapframe) = *(t->trapframe);
 
   // Cause fork to return 0 in the child.
-  np->trapframe->a0 = 0;
+  np->init_thread->trapframe->a0 = 0;
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -343,7 +357,7 @@ fork(void)
   release(&wait_lock);
 
   acquire(&np->lock);
-  np->state = RUNNABLE;
+  np->init_thread->state = RUNNABLE;
   release(&np->lock);
 
   return pid;

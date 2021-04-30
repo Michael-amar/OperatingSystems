@@ -17,3 +17,5 @@
 #define SIGSTOP       17
 #define SIGCONT       19
 #define NUM_OF_SIGNALS 32
+
+#define NTHREAD       8
