@@ -80,7 +80,33 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-enum procstate { UNUSED, USED, ZOMBIE };
+enum procstate { UNUSED_P, USED_P, ALIVE , ZOMBIE_P};
+
+
+
+//---------------------threads--------------------------
+enum threadstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+
+struct thread
+{
+  struct spinlock lock;
+  // p->lock must be held when using these:
+  enum threadstate state;      // thread state
+  void *chan;                  // If non-zero, sleeping on chan
+  int killed;                  // If non-zero, have been killed
+  int xstate;                  // Exit status to be returned to parent's wait
+  int tid;                     // thread ID
+
+  // proc_tree_lock must be held when using this:
+  struct proc *parent;         // Parent process
+
+  // these are private to the process, so p->lock need not be held.
+  uint64 kstack;               // Virtual address of kernel stack
+  struct trapframe *trapframe; // data page for trampoline.S
+  struct trapframe *tf_backup;
+  struct context context;      // swtch() here to run process
+
+};
 
 // Per-process state
 struct proc {
@@ -117,26 +143,4 @@ struct proc {
 };
 
 
-//---------------------threads--------------------------
-enum threadstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct thread
-{
-  struct spinlock lock;
-  // p->lock must be held when using these:
-  enum threadstate state;      // thread state
-  void *chan;                  // If non-zero, sleeping on chan
-  int killed;                  // If non-zero, have been killed
-  int xstate;                  // Exit status to be returned to parent's wait
-  int tid;                     // thread ID
-
-  // proc_tree_lock must be held when using this:
-  struct proc *parent;         // Parent process
-
-  // these are private to the process, so p->lock need not be held.
-  uint64 kstack;               // Virtual address of kernel stack
-  struct trapframe *trapframe; // data page for trampoline.S
-  struct trapframe *tf_backup;
-  struct context context;      // swtch() here to run process
-
-};

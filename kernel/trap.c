@@ -45,20 +45,20 @@ usertrap(void)
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 
-  struct proc *p = myproc();
+  struct thread *t = mythread();
   
   // save user program counter.
-  p->trapframe->epc = r_sepc();
+  t->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
     // system call
 
-    if(p->killed)
-      exit(-1);
+    if(t->killed)
+      exit_thread(-1);
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
-    p->trapframe->epc += 4;
+    t->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
@@ -68,13 +68,13 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    printf("usertrap(): unexpected scause %p tid=%d\n", r_scause(), t->tid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    t->killed = 1;
   }
 
-  if(p->killed)
-    exit(-1);
+  if(t->killed)
+    exit_thread(-1);
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
@@ -90,7 +90,7 @@ void
 usertrapret(void)
 {
   struct proc *p = myproc();
-      
+  struct thread* t =mythread();
 
 
   // we're about to switch the destination of traps from
@@ -98,17 +98,19 @@ usertrapret(void)
   // we're back in user space, where usertrap() is correct.
   intr_off();
 
+
   handle_signals();
+
 
   // send syscalls, interrupts, and exceptions to trampoline.S
   w_stvec(TRAMPOLINE + (uservec - trampoline));
 
   // set up trapframe values that uservec will need when
   // the process next re-enters the kernel.
-  p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
-  p->trapframe->kernel_trap = (uint64)usertrap;
-  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+  t->trapframe->kernel_satp = r_satp();         // kernel page table
+  t->trapframe->kernel_sp = t->kstack + PGSIZE; // process's kernel stack
+  t->trapframe->kernel_trap = (uint64)usertrap;
+  t->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
 
   // set up the registers that trampoline.S's sret will use
   // to get to user space.
@@ -120,7 +122,7 @@ usertrapret(void)
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
-  w_sepc(p->trapframe->epc);
+  w_sepc(t->trapframe->epc);
 
 
   // tell trampoline.S the user page table to switch to.
@@ -155,7 +157,7 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+  if(which_dev == 2 && mythread() != 0 && mythread()->state == RUNNING)
     yield();
 
   // the yield() may have caused some traps to occur,
@@ -257,21 +259,22 @@ void handle_signals()
 void user_handler(int signum)
 {
   struct proc* p = myproc();
+  struct thread* t = mythread();
   if (p->signal_handling == 0)
   {
-    copy_tf(p->tf_backup,p->trapframe);
+    copy_tf(t->tf_backup,t->trapframe);
     uint func_size = end_call_sigret - call_sigret;
     p->signal_mask_backup = p->proc_signal_mask;
     p->proc_signal_mask = p->signal_masks[signum];
     p->signal_handling = 1;
-    p->trapframe->sp -= sizeof(struct trapframe);
-    p->tf_backup->sp = p->trapframe->sp;
-    copyout(p->pagetable , p->tf_backup->sp , (char*) p->trapframe , sizeof(struct trapframe));
-    p->trapframe->epc = (uint64) p->signal_handlers[signum];
-    p->trapframe->sp -= func_size;
-    copyout(p->pagetable , p->trapframe->sp ,(char*) call_sigret , func_size);
-    p->trapframe->a0 = signum;
-    p->trapframe->ra = p->trapframe->sp;
+    t->trapframe->sp -= sizeof(struct trapframe);
+    t->tf_backup->sp = t->trapframe->sp;
+    copyout(p->pagetable , t->tf_backup->sp , (char*) t->trapframe , sizeof(struct trapframe));
+    t->trapframe->epc = (uint64) p->signal_handlers[signum];
+    t->trapframe->sp -= func_size;
+    copyout(p->pagetable , t->trapframe->sp ,(char*) call_sigret , func_size);
+    t->trapframe->a0 = signum;
+    t->trapframe->ra = t->trapframe->sp;
   }
   else
   {
@@ -284,9 +287,14 @@ void kill_handler(int signum)
 {
   struct proc* p = myproc();
   acquire(&p->lock);
-  p->killed = 1;
-  if(p->state == SLEEPING)
-    p->state = RUNNABLE;
+  for (struct thread* t=p->threads ; t<&p->threads[NTHREAD] ; t++)
+  {
+    acquire(&t->lock);
+    t->killed = 1;
+    if(t->state == SLEEPING)
+      t->state = RUNNABLE;
+    release(&t->lock);
+  }
   release(&p->lock);
 }
 

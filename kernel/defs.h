@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct trapframe;
+struct thread; 
 
 // bio.c
 void            binit(void);
@@ -94,6 +95,7 @@ int             kill(int,int);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+struct thread*  mythread();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
@@ -109,6 +111,8 @@ void            procdump(void);
 uint            sigprocmask(uint);
 int             sigaction(int, uint64, uint64);
 void            sigret(void);
+int             alloctid();
+void            exit_thread(int);
 // swtch.S
 void            swtch(struct context*, struct context*);
 
@@ -197,3 +201,8 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+
+
+
+
