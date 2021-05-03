@@ -78,7 +78,12 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
-    yield();
+  {
+    if (ticks % QUANTOM == 0)
+    {
+      yield();
+    }
+  }
 
   usertrapret();
 }
@@ -128,6 +133,7 @@ usertrapret(void)
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
 
+
   // jump to trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
@@ -158,7 +164,13 @@ kerneltrap()
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && mythread() != 0 && mythread()->state == RUNNING)
-    yield();
+  {
+    if (ticks % QUANTOM == 0)
+    {
+      printf("calling yield!\n");
+      yield();
+    }
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.

@@ -17,31 +17,31 @@ main()
     printf("xv6 kernel is booting\n");
     printf("\n");
     kinit();         // physical page allocator
-    printf("after kinit\n");
+    //printf("after kinit\n");
     kvminit();       // create kernel page table
-    printf("after kvminit\n");
+    //printf("after kvminit\n");
     kvminithart();   // turn on paging
-    printf("after kvminithart\n");
+    //printf("after kvminithart\n");
     procinit();      // process table
-    printf("after procinit\n");
+    //printf("after procinit\n");
     trapinit();      // trap vectors
-    printf("after trapinit\n");
+    //printf("after trapinit\n");
     trapinithart();  // install kernel trap vector
-    printf("after trapinithart\n");
+    //printf("after trapinithart\n");
     plicinit();      // set up interrupt controller
-    printf("after plicinit\n");
+    //printf("after plicinit\n");
     plicinithart();  // ask PLIC for device interrupts
-    printf("after plicinithart\n");
+    //printf("after plicinithart\n");
     binit();         // buffer cache
-    printf("after binit\n");
+    //printf("after binit\n");
     iinit();         // inode cache
-    printf("after iinit\n");
+    //printf("after iinit\n");
     fileinit();      // file table
-    printf("after fileinit\n");
+    //printf("after fileinit\n");
     virtio_disk_init(); // emulated hard disk
-    printf("after virtio_disk_init\n");
+    //printf("after virtio_disk_init\n");
     userinit();      // first user process
-    printf("after userinit\n");
+    //printf("after userinit\n");
     __sync_synchronize();
     started = 1;
   } else {

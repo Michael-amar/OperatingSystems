@@ -113,7 +113,6 @@ exit_thread(int status)
   t->xstate = status;
   t->state = ZOMBIE;
 
-  release(&t->lock);
 
   release(&wait_lock);
 
@@ -372,6 +371,7 @@ uchar initcode[] = {
 void
 userinit(void)
 {
+  printf("in user init\n");
   struct proc *p;
 
   p = allocproc();
@@ -390,7 +390,9 @@ userinit(void)
   p->cwd = namei("/");
 
   p->init_thread->state = RUNNABLE;
+  p->state = ALIVE;
 
+  release(&p->init_thread->lock);
   release(&p->lock);
 }
 
@@ -468,7 +470,7 @@ fork(void)
   np->parent = p;
   release(&wait_lock);
 
-  acquire(&np->init_thread->lock);
+  np->state = ALIVE;
   np->init_thread->state = RUNNABLE;
   release(&np->init_thread->lock);
 
@@ -496,6 +498,7 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
+  printf("in exit\n");
   struct proc *p = myproc();
 
   if(p == initproc)
@@ -526,7 +529,9 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  p->state = ZOMBIE;
+  p->state = ZOMBIE_P;
+
+  release(&p->lock);
 
   for(struct thread* t = p->threads; t < &p->threads[NTHREAD]; t++)
   {
@@ -537,10 +542,15 @@ exit(int status)
       t->state = RUNNABLE;
     }
     release(&t->lock);
-  }
+  } 
+  acquire(&mythread()->lock);
+  mythread()->state = ZOMBIE;
+  mythread()->xstate = status;
+
 
   release(&wait_lock);
 
+  
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");
@@ -582,6 +592,7 @@ wait(uint64 addr)
             return -1;
           }
           freeproc(np);
+          printf("wait: after free proc\n");
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -597,8 +608,10 @@ wait(uint64 addr)
       return -1;
     }
     
+    printf("thread %d went to sleep\n",mythread()->tid);
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
+    
   }
 }
 
@@ -618,41 +631,44 @@ scheduler(void)
   c->thread = 0;
   for(;;)
   {
+    //printf("in schedualer main loop\n");
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) 
     {
-      acquire(&p->lock);
-      printf("line 627!\n");if(p->state == ALIVE) 
+      //acquire(&p->lock);
+      if(p->state == ALIVE) 
       {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
 
-        // p->state = RUNNING;
-        //c->proc = p;
-        
+        // Switch to chosen thread.  It is the thread's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.        
         for(struct thread* t = p->threads ; t< &p->threads[NTHREAD] ; t++)
         {
+          /*printf("thread state:%s\n" , t->state == RUNNABLE ? "RUNNABLE" 
+                                      :  t->state == UNUSED ? "UNUSED"
+                                      :  t->state == USED ? "USED"
+                                      :  t->state == RUNNING ? "RUNNING"
+                                      :  t->state == SLEEPING ? "SLEEPING" 
+                                      :  "ZOMBIE");*/
           acquire(&t->lock);
           if(t->state == RUNNABLE)
           {
+            //printf("picked Thread\n");
             t->state = RUNNING;
             c->thread = t;
+            printf("address: %p\n",(void*)t->trapframe->epc);
             swtch(&c->context, &t->context);
-
+            printf("after swtch in scheduler\n");
             // Process is done running for now.
             // It should have changed its p->state before coming back.
             c->thread = 0;
           }
           release(&t->lock);
-        }
-        // swtch(&c->context, &p->context);
-
-        
+        }     
       }
-      release(&p->lock);
+      //release(&p->lock);
     }
   }
 }
@@ -669,7 +685,7 @@ sched(void)
 {
   int intena;
   struct thread *t = mythread();
-  
+  //printf("noff:%d\n",mycpu()->noff);
   if(!holding(&t->lock))
     panic("sched t->lock");
   if(mycpu()->noff != 1)
@@ -689,6 +705,7 @@ sched(void)
 void
 yield(void)
 {
+  printf("yield %d\n",ticks);
   struct thread *t = mythread();
   acquire(&t->lock);
   t->state = RUNNABLE;
@@ -766,6 +783,7 @@ wakeup(void *chan)
         acquire(&t->lock);
         if(t->state == SLEEPING && t->chan == chan) 
         {
+          printf("process %d thread %d runnable\n",t);
           t->state = RUNNABLE;
         }
         release(&t->lock);

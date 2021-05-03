@@ -19,3 +19,4 @@
 #define NUM_OF_SIGNALS 32
 
 #define NTHREAD       8
+#define QUANTOM       5
