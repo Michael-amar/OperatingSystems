@@ -166,13 +166,7 @@ main(void)
       continue;
     }
     if(fork1() == 0)
-    {
-      label:
-      printf("main adress: %p", main);
-      printf("label adress: %p", &&label);
       runcmd(parsecmd(buf));
-      printf("in shell\n");
-    }
     wait(0);
   }
   exit(0);

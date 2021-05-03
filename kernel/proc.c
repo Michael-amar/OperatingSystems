@@ -145,7 +145,7 @@ proc_mapstacks(pagetable_t kpgtbl) {
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
+    uint64 va = KSTACK((int) (p - proc)*8);
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
@@ -165,7 +165,7 @@ procinit(void)
       for( t = p->threads ; t < &p->threads[NTHREAD] ; t++)
       {
         initlock(&t->lock, "thread");
-        t->kstack = KSTACK((int) (t - p->threads));
+        t->kstack = KSTACK((int) (((p - proc)*8)+(t-p->threads)));
       }
   }
 }
@@ -498,7 +498,6 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
-  printf("in exit\n");
   struct proc *p = myproc();
 
   if(p == initproc)
@@ -592,7 +591,6 @@ wait(uint64 addr)
             return -1;
           }
           freeproc(np);
-          printf("wait: after free proc\n");
           release(&np->lock);
           release(&wait_lock);
           return pid;
@@ -608,7 +606,6 @@ wait(uint64 addr)
       return -1;
     }
     
-    printf("thread %d went to sleep\n",mythread()->tid);
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
     
@@ -627,7 +624,6 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  printf("in scheduler!\n");
   c->thread = 0;
   for(;;)
   {
@@ -658,9 +654,7 @@ scheduler(void)
             //printf("picked Thread\n");
             t->state = RUNNING;
             c->thread = t;
-            printf("address: %p\n",(void*)t->trapframe->epc);
             swtch(&c->context, &t->context);
-            printf("after swtch in scheduler\n");
             // Process is done running for now.
             // It should have changed its p->state before coming back.
             c->thread = 0;
@@ -705,7 +699,6 @@ sched(void)
 void
 yield(void)
 {
-  printf("yield %d\n",ticks);
   struct thread *t = mythread();
   acquire(&t->lock);
   t->state = RUNNABLE;
@@ -783,7 +776,6 @@ wakeup(void *chan)
         acquire(&t->lock);
         if(t->state == SLEEPING && t->chan == chan) 
         {
-          printf("process %d thread %d runnable\n",t);
           t->state = RUNNABLE;
         }
         release(&t->lock);

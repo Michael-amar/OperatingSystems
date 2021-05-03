@@ -167,7 +167,6 @@ kerneltrap()
   {
     if (ticks % QUANTOM == 0)
     {
-      printf("calling yield!\n");
       yield();
     }
   }
