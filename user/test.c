@@ -3,105 +3,110 @@
 #include "kernel/fcntl.h"
 #include "kernel/param.h"
 #include "sigaction.h"
-void test_sigprocmask1()
+
+// concurrent forks to try to expose locking bugs.
+void
+forkfork(char *s)
 {
-    uint a = sigprocmask(6);
-    uint b = sigprocmask(7);
-    if ((a == 0) && (b == 6))
-    {
-        printf("test_sigprocmask1:OK\n");
+  enum { N=2 };
+  
+  for(int i = 0; i < N; i++){
+    int pid = fork();
+    if(pid < 0){
+      printf("%s: fork failed", s);
+      exit(1);
     }
-    else{
-        printf("test_sigprocmask1:FAIL\n");
-        printf("a:%d , b:%d\n" , a,b);
+    if(pid == 0){
+      for(int j = 0; j < 200; j++){
+        int pid1 = fork();
+        if(pid1 < 0){
+          exit(1);
+        }
+        if(pid1 == 0){
+          exit(0);
+        }
+        wait(0);
+      }
+      exit(0);
     }
-}
+  }
 
-void test_sigprocmask2()
-{
-    uint a = sigaction(SIGKILL,0,0);
-    uint b = sigaction(SIGSTOP,0,0);
-    if ((a == -1) && (b == -1))
-    {
-        printf("test_sigprocmask2:OK\n");
+  int xstatus;
+  for(int i = 0; i < N; i++){
+    wait(&xstatus);
+    if(xstatus != 0) {
+      printf("%s: fork in child failed", s);
+      exit(1);
     }
-    else{
-        printf("test_sigprocmask2:FAIL\n");
-        printf("a:%d , b:%d\n" , a,b);
-    }
+  }
 }
 
-void test_sigkill()
+void
+sbrkbugs(char *s)
 {
-    //int pid = fork();
+  int pid = fork();
+  if(pid < 0){
+    printf("fork failed\n");
+    exit(1);
+  }
+  if(pid == 0){
+    int sz = (uint64) sbrk(0);
+    // free all user memory; there used to be a bug that
+    // would not adjust p->sz correctly in this case,
+    // causing exit() to panic.
+    sbrk(-sz);
+    // user page fault here.
+    exit(0);
+  }
+  wait(0);
 
+  pid = fork();
+  if(pid < 0){
+    printf("fork failed\n");
+    exit(1);
+  }
+  if(pid == 0){
+    int sz = (uint64) sbrk(0);
+    // set the break to somewhere in the very first
+    // page; there used to be a bug that would incorrectly
+    // free the first page.
+    sbrk(-(sz - 3500));
+    exit(0);
+  }
+  wait(0);
+
+  pid = fork();
+  if(pid < 0){
+    printf("fork failed\n");
+    exit(1);
+  }
+  if(pid == 0){
+    // set the break in the middle of a page.
+    sbrk((10*4096 + 2048) - (uint64)sbrk(0));
+
+    // reduce the break a bit, but not enough to
+    // cause a page to be freed. this used to cause
+    // a panic.
+    sbrk(-10);
+
+    exit(0);
+  }
+  wait(0);
+
+  exit(0);
 }
-void test_sigaction()
+
+void tfunc()
 {
-    struct sigaction a;
-    struct sigaction b;
-    a.sa_handler = (void*) 1234;
-    a.sigmask = 789;
-    sigaction(6,&a,0);
-    sigaction(6,0,&b);
-    if(b.sa_handler == (void*) 1234 && b.sigmask == 789)
-    {
-      printf("test_sigaction:OK\n");
-    }
-    else{
-        printf("test_sigaction:FAIL\n");
-    }
+  printf("thread func\n");  
 }
-
-int wait_sig = 0;
-
-
-void func(int signum)
-{
-    printf("test\n");
-}
-
-
-void func2(int signum)
-{
-    printf("got signal:%d\n" , signum);
-    return;
-}
-
-
-void test_handler(int signum)
-{
-    wait_sig = 1;
-    printf("Received sigtest\n");
-}
-
-
-
 
 int main()
 {
-    // test_sigprocmask1();
-    // test_sigprocmask2();
-    // test_sigaction();
-    func(5);
-    func2(2);
-    int pid;
-    int testsig;
-    testsig=15;
-    printf("test_handler:%p\nfunc:%d\nfunc2:%p\n",test_handler,func,func2);
-    struct sigaction act = {test_handler, (uint)(1 << 29)};
-    struct sigaction old;
 
-    sigprocmask(0);
-    sigaction(testsig, &act, &old);
-    if((pid = fork()) == 0){
-        while(!wait_sig)
-            sleep(1);
-        exit(0);
-    }
-    kill(pid, testsig);
-    wait(&pid);
-    printf("Finished testing signals\n");
-    exit(0);
-    return 1;
+    //forkfork("");
+    void* stack = malloc(STACK_SIZE);
+    kthread_create(&tfunc,stack);
+    sleep(10);
+    exit(1);
 }

@@ -62,7 +62,6 @@ alloctid() {
 }
 
 
-//TODO: what is forkret? decide what to do with it in this function
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -72,11 +71,19 @@ allocthread(struct proc* p)
 {
   struct thread *t;
   int index = 0;
-  for(t = p->threads; t < &p->threads[NTHREAD]; t++) {
+  for(t = p->threads; t < &p->threads[NTHREAD]; t++) 
+  {
     acquire(&t->lock);
-    if(t->state == UNUSED) {
+    if(t->state == UNUSED) 
+    {
       goto found;
-    } else {
+    } 
+    if(t->state == ZOMBIE)
+    {
+      freethread(t);
+    }
+    else 
+    {
       release(&t->lock);
     }
     index++;
@@ -99,6 +106,7 @@ found:
   // which returns to user space.
   memset(&t->context, 0, sizeof(t->context));
   t->context.sp = t->kstack + PGSIZE;
+  t->context.ra = (uint64)forkret;
 
   return t;
 }
@@ -272,15 +280,10 @@ found:
   p->freezed = 0;
   //----------------------------------------------
 
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
-  // memset(&p->context, 0, sizeof(p->context));
-  // p->context.ra = (uint64)forkret;
-  // p->context.sp = p->kstack + PGSIZE;
 
   t = allocthread(p);
   p->init_thread = t;
-  t->context.ra = (uint64)forkret;
+  
 
   return p;
 }
@@ -447,6 +450,7 @@ fork(void)
     np->signal_masks[i] = p->signal_masks[i];
   }
   //-------------------------------------------------
+
   struct thread *t = mythread();
   // copy saved user registers.
   *(np->init_thread->trapframe) = *(t->trapframe);
@@ -466,9 +470,9 @@ fork(void)
 
   release(&np->lock);
 
-  acquire(&wait_lock);
+  //acquire(&wait_lock);
   np->parent = p;
-  release(&wait_lock);
+  //release(&wait_lock);
 
   np->state = ALIVE;
   np->init_thread->state = RUNNABLE;
@@ -542,12 +546,13 @@ exit(int status)
     }
     release(&t->lock);
   } 
-  acquire(&mythread()->lock);
-  mythread()->state = ZOMBIE;
-  mythread()->xstate = status;
+  exit_thread(status);
+  // acquire(&mythread()->lock);
+  // mythread()->state = ZOMBIE;
+  // mythread()->xstate = status;
 
 
-  release(&wait_lock);
+  //release(&wait_lock);
 
   
   // Jump into the scheduler, never to return.
@@ -911,4 +916,42 @@ void sigret(void)
   copy_tf(t->trapframe, t->tf_backup);
   p->proc_signal_mask = p->signal_mask_backup;
   p->signal_handling = 0; 
+}
+
+
+int kthread_create(uint64 func_addr ,uint64 stack ) 
+{
+  printf("kthread_create\n");
+  struct proc *p = myproc();
+  struct thread *nt = allocthread(p);
+  struct thread *t = mythread();
+  if(nt == 0)
+  {
+    return -1;
+  }
+  copy_tf(nt->trapframe, t->trapframe);
+  printf("befor\n");
+  nt->trapframe->epc = func_addr;
+  nt->trapframe->sp = stack;
+  nt->state = RUNNABLE;
+  release(&nt->lock);
+  printf("After\n");
+  return nt->tid;
+}
+
+int kthread_id () 
+{
+  return mythread()->tid;
+}
+
+int kthread_exit(int status) 
+{
+  printf("kthread_exit\n");
+  return 0;
+}
+
+int kthread_join(int thread_id , uint64 status) 
+{
+  printf("kthread_join\n");
+  return 0;
 }

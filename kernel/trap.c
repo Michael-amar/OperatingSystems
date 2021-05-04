@@ -78,12 +78,8 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
-  {
-    if (ticks % QUANTOM == 0)
-    {
-      yield();
-    }
-  }
+    yield();
+  
 
   usertrapret();
 }
@@ -134,11 +130,12 @@ usertrapret(void)
   uint64 satp = MAKE_SATP(p->pagetable);
 
 
+  int t_index = (int) (t - p->threads);
   // jump to trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
   uint64 fn = TRAMPOLINE + (userret - trampoline);
-  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
+  ((void (*)(uint64,uint64))fn)(TRAPFRAME+(t_index * sizeof(struct trapframe)), satp);
 }
 
 // interrupts and exceptions from kernel code go here via kernelvec,
@@ -164,12 +161,8 @@ kerneltrap()
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && mythread() != 0 && mythread()->state == RUNNING)
-  {
-    if (ticks % QUANTOM == 0)
-    {
-      yield();
-    }
-  }
+    yield();
+
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.

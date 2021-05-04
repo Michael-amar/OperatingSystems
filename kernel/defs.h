@@ -113,6 +113,13 @@ int             sigaction(int, uint64, uint64);
 void            sigret(void);
 int             alloctid();
 void            exit_thread(int);
+int             kthread_create(uint64, uint64);
+int             kthread_id();
+int             kthread_exit(int);
+int             kthread_join(int, uint64);
+
+
+
 // swtch.S
 void            swtch(struct context*, struct context*);
 

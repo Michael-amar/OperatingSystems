@@ -20,3 +20,4 @@
 
 #define NTHREAD       8
 #define QUANTOM       5
+#define STACK_SIZE    4000  

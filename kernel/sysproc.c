@@ -123,3 +123,38 @@ sys_sigret(void)
   sigret();
   return 0;
 }
+uint64 sys_kthread_create(void)
+{
+  uint64 start_func,stack;
+
+  if(argaddr(0, &start_func) < 0|| argaddr(1, &stack) < 0)
+  {
+    return -1;
+  }
+  return kthread_create(start_func, stack);
+}
+
+uint64 sys_kthread_id(void)
+{
+  return kthread_id();
+}
+uint64 sys_kthread_exit(void)
+{
+  int status;
+
+  if(argint(0, &status) < 0)
+  {
+    return -1;
+  }
+  return kthread_exit(status);
+}
+uint64 sys_kthread_join(void)
+{
+  int thread_id;
+  uint64 status;
+  if(argint(0, &thread_id) < 0 || argaddr(1, &status) < 0)
+  {
+    return -1;
+  }
+  return kthread_join(thread_id, status);
+}
