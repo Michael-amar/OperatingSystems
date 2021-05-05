@@ -111,6 +111,7 @@ extern uint64 sys_kthread_create(void);
 extern uint64 sys_kthread_id(void);
 extern uint64 sys_kthread_exit(void);
 extern uint64 sys_kthread_join(void);
+extern uint64 sys_print_ptable(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]                sys_fork,
@@ -141,6 +142,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_kthread_id]          sys_kthread_id,
 [SYS_kthread_exit]        sys_kthread_exit,
 [SYS_kthread_join]        sys_kthread_join,
+[SYS_print_ptable]        sys_print_ptable,
 };
 
 void

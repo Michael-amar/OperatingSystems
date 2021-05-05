@@ -98,7 +98,11 @@ sbrkbugs(char *s)
 
 void tfunc()
 {
-  printf("thread func\n");  
+  for(int i=0 ; i<10 ; i++)
+  {
+    printf("hello %d\n",i);
+  }
+  exit(0);
 }
 
 int main()

@@ -158,3 +158,10 @@ uint64 sys_kthread_join(void)
   }
   return kthread_join(thread_id, status);
 }
+
+uint64
+sys_print_ptable(void)
+{
+  print_ptable();
+  return 0;
+}

@@ -27,3 +27,4 @@
 #define SYS_kthread_id          26
 #define SYS_kthread_exit        27
 #define SYS_kthread_join        28
+#define SYS_print_ptable        29

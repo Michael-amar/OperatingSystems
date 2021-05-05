@@ -31,7 +31,7 @@ int kthread_create(void (*start_func) () , void *stack );
 int kthread_id(void);
 int kthread_exit(int);
 int kthread_join(int, int*);
-
+void print_ptable(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

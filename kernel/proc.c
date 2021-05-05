@@ -114,14 +114,20 @@ found:
 void
 exit_thread(int status)
 {
+
   struct thread *t = mythread();
-  
+
+  acquire(&t->parent->lock);
+  int alive_threads = t->parent->alive_threads;
+  release(&t->parent->lock);
+
   acquire(&t->lock);
 
   t->xstate = status;
   t->state = ZOMBIE;
 
-
+  if (alive_threads == 0)
+    t->parent->state = ZOMBIE_P;
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -146,15 +152,20 @@ mythread(void) {
 // Map it high in memory, followed by an invalid
 // guard page.
 void
-proc_mapstacks(pagetable_t kpgtbl) {
+proc_mapstacks(pagetable_t kpgtbl) 
+{
   struct proc *p;
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    char *pa = kalloc();
-    if(pa == 0)
-      panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc)*8);
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  struct thread* t;
+  for(p = proc; p < &proc[NPROC]; p++) 
+  {
+    for (t =p->threads; t<&p->threads[NTHREAD] ; t++)
+    {
+      char *pa = kalloc();
+      if(pa == 0)
+        panic("kalloc");
+      uint64 va = KSTACK((((int) (p - proc))*8) + ((int) (t-p->threads)));
+      kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    }
   }
 }
 
@@ -173,7 +184,7 @@ procinit(void)
       for( t = p->threads ; t < &p->threads[NTHREAD] ; t++)
       {
         initlock(&t->lock, "thread");
-        t->kstack = KSTACK((int) (((p - proc)*8)+(t-p->threads)));
+        t->kstack = KSTACK((int) (((p - proc)*8)+(((int) (t-p->threads)))));
       }
   }
 }
@@ -244,7 +255,8 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-  p->state = USED;
+  p->state = USED_P;
+  
   
   // Allocate a trapframes page.
   if((p->trapframes = (struct trapframe *)kalloc()) == 0){
@@ -252,12 +264,6 @@ found:
     release(&p->lock);
     return 0;
   }
-
-  // if((p->tf_backup = (struct trapframe *)kalloc()) == 0){
-  //   freeproc(p);
-  //   release(&p->lock);
-  //   return 0;
-  // }
 
   // An empty user page table.
 
@@ -283,7 +289,7 @@ found:
 
   t = allocthread(p);
   p->init_thread = t;
-  
+  p->alive_threads = 1;
 
   return p;
 }
@@ -468,13 +474,13 @@ fork(void)
 
   pid = np->pid;
 
+  np->state = ALIVE;
   release(&np->lock);
 
   //acquire(&wait_lock);
   np->parent = p;
   //release(&wait_lock);
 
-  np->state = ALIVE;
   np->init_thread->state = RUNNABLE;
   release(&np->init_thread->lock);
 
@@ -547,12 +553,6 @@ exit(int status)
     release(&t->lock);
   } 
   exit_thread(status);
-  // acquire(&mythread()->lock);
-  // mythread()->state = ZOMBIE;
-  // mythread()->xstate = status;
-
-
-  //release(&wait_lock);
 
   
   // Jump into the scheduler, never to return.
@@ -632,13 +632,11 @@ scheduler(void)
   c->thread = 0;
   for(;;)
   {
-    //printf("in schedualer main loop\n");
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) 
     {
-      //acquire(&p->lock);
       if(p->state == ALIVE) 
       {
 
@@ -647,16 +645,10 @@ scheduler(void)
         // before jumping back to us.        
         for(struct thread* t = p->threads ; t< &p->threads[NTHREAD] ; t++)
         {
-          /*printf("thread state:%s\n" , t->state == RUNNABLE ? "RUNNABLE" 
-                                      :  t->state == UNUSED ? "UNUSED"
-                                      :  t->state == USED ? "USED"
-                                      :  t->state == RUNNING ? "RUNNING"
-                                      :  t->state == SLEEPING ? "SLEEPING" 
-                                      :  "ZOMBIE");*/
+
           acquire(&t->lock);
           if(t->state == RUNNABLE)
           {
-            //printf("picked Thread\n");
             t->state = RUNNING;
             c->thread = t;
             swtch(&c->context, &t->context);
@@ -667,7 +659,6 @@ scheduler(void)
           release(&t->lock);
         }     
       }
-      //release(&p->lock);
     }
   }
 }
@@ -924,18 +915,23 @@ int kthread_create(uint64 func_addr ,uint64 stack )
   printf("kthread_create\n");
   struct proc *p = myproc();
   struct thread *nt = allocthread(p);
+
+  acquire(&p->lock);
+  p->alive_threads++;
+  release(&p->lock);
+
   struct thread *t = mythread();
   if(nt == 0)
-  {
     return -1;
-  }
+
   copy_tf(nt->trapframe, t->trapframe);
-  printf("befor\n");
   nt->trapframe->epc = func_addr;
   nt->trapframe->sp = stack;
   nt->state = RUNNABLE;
+  nt->context.ra = (uint64) kthread_create_ret;
+
+  //nt->lock held from allocthread
   release(&nt->lock);
-  printf("After\n");
   return nt->tid;
 }
 
@@ -954,4 +950,41 @@ int kthread_join(int thread_id , uint64 status)
 {
   printf("kthread_join\n");
   return 0;
+}
+
+void
+kthread_create_ret(void)
+{
+  release(&mythread()->lock);
+  usertrapret();
+}
+
+void print_ptable(void)
+{
+  for (int i=0 ; i<5 ; i++)
+  {
+    if (proc[i].pid == myproc()->pid)
+      printf("pid(me):%d\n",proc[i].pid);
+    else
+      printf("pid:%d\n",proc[i].pid);
+    printf("pstate:%s\n", proc[i].state == UNUSED_P ? "UNUSED" :
+                           proc[i].state == USED_P ? "USED" :
+                           proc[i].state == ALIVE ? "ALIVE" :
+                           "ZOMBIE_P");
+    printf("xstate:%d\n",proc[i].xstate);
+    for (int j=0 ; j<NTHREAD ; j++)
+    {
+      if (proc[i].threads[j].tid == mythread()->tid)
+        printf("\ttid(me):%d\n",proc[i].threads[j].tid);
+      else
+        printf("\ttid:%d\n",proc[i].threads[j].tid);
+      printf("\ttstate:%s\n", proc[i].threads[j].state == UNUSED ? "UNUSED" :
+                             proc[i].threads[j].state == USED ? "USED" :
+                             proc[i].threads[j].state == SLEEPING ? "SLEEPING" :
+                             proc[i].threads[j].state == RUNNABLE ? "RUNNABLE" :
+                             proc[i].threads[j].state == RUNNING ? "RUNNING" : 
+                             "ZOMBIE");
+      printf("\tkilled:%d\n",proc[i].threads[j].killed);
+    }
+  }
 }
