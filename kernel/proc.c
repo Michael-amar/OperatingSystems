@@ -1004,15 +1004,13 @@ bsem_free(int fd)
 void
 bsem_down(int fd)
 {
-  
   struct semaphore* sem = &semaphores[fd];
+  acquire(&sem->lk);
   while(__sync_lock_test_and_set(&sem->taken, 1) != 0)
   {
-    acquire(&sem->lk);
     sleep(sem->chan, &sem->lk);
-    release(&sem->lk);
   }
-
+  release(&sem->lk);
   __sync_synchronize();
   return;
 }
@@ -1020,35 +1018,16 @@ bsem_down(int fd)
 void
 bsem_up(int fd)
 {
+
   struct semaphore* sem = &semaphores[fd];
+  acquire(&sem->lk);
   __sync_lock_test_and_set(&sem->taken, 0);
   wakeup(sem->chan);
+  release(&sem->lk);
+
 }
 
-int 
-csem_alloc(uint64 sem)
-{
-  printf("csem_alloc()\n");
-  return 0;
-}
 
-void
-csem_free(uint64 sem)
-{
-  printf("csem_free()\n");
-}
-
-void
-csem_down(uint64 sem)
-{
-  printf("csem_down()\n");
-}
-
-void
-csem_up(uint64 sem)
-{
-  printf("csem_up()\n");
-}
 
 
 

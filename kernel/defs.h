@@ -60,10 +60,6 @@ int             bsem_alloc(void);
 void            bsem_free(int fd);
 void            bsem_down(int fd);
 void            bsem_up(int fd);
-int             csem_alloc(uint64 sem);
-void            csem_free(uint64 sem);
-void            csem_down(uint64 sem);
-void            csem_up(uint64 sem);
 
 // ramdisk.c
 void            ramdiskinit(void);

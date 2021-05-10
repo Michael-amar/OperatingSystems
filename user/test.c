@@ -3,134 +3,87 @@
 #include "kernel/fcntl.h"
 #include "kernel/param.h"
 #include "sigaction.h"
+#include "Csemaphore.h"
 
-// concurrent forks to try to expose locking bugs.
-void
-forkfork(char *s)
+void func1(struct counting_semaphore* sem)
 {
-  enum { N=2 };
-  
-  for(int i = 0; i < N; i++){
-    int pid = fork();
-    if(pid < 0){
-      printf("%s: fork failed", s);
-      exit(1);
-    }
-    if(pid == 0){
-      for(int j = 0; j < 200; j++){
-        int pid1 = fork();
-        if(pid1 < 0){
-          exit(1);
-        }
-        if(pid1 == 0){
-          exit(0);
-        }
-        wait(0);
-      }
-      exit(0);
-    }
-  }
-
-  int xstatus;
-  for(int i = 0; i < N; i++){
-    wait(&xstatus);
-    if(xstatus != 0) {
-      printf("%s: fork in child failed", s);
-      exit(1);
-    }
-  }
-}
-
-void
-sbrkbugs(char *s)
-{
-  int pid = fork();
-  if(pid < 0){
-    printf("fork failed\n");
-    exit(1);
-  }
-  if(pid == 0){
-    int sz = (uint64) sbrk(0);
-    // free all user memory; there used to be a bug that
-    // would not adjust p->sz correctly in this case,
-    // causing exit() to panic.
-    sbrk(-sz);
-    // user page fault here.
-    exit(0);
-  }
-  wait(0);
-
-  pid = fork();
-  if(pid < 0){
-    printf("fork failed\n");
-    exit(1);
-  }
-  if(pid == 0){
-    int sz = (uint64) sbrk(0);
-    // set the break to somewhere in the very first
-    // page; there used to be a bug that would incorrectly
-    // free the first page.
-    sbrk(-(sz - 3500));
-    exit(0);
-  }
-  wait(0);
-
-  pid = fork();
-  if(pid < 0){
-    printf("fork failed\n");
-    exit(1);
-  }
-  if(pid == 0){
-    // set the break in the middle of a page.
-    sbrk((10*4096 + 2048) - (uint64)sbrk(0));
-
-    // reduce the break a bit, but not enough to
-    // cause a page to be freed. this used to cause
-    // a panic.
-    sbrk(-10);
-
-    exit(0);
-  }
-  wait(0);
-
-  exit(0);
-}
-
-void tfunc()
-{
-    printf("id is: %d\n",kthread_id());
-    for(int i=0 ; i<10 ; i++)
+  csem_down(sem);
+  for (int i=0 ; i<20 ; i++)
   {
-    printf("hello %d\n",i);
+    printf("---func1---%d\n", i);
   }
-  exit(0);
+  sleep(10);
+  csem_up(sem);
+}
+
+void func2(struct counting_semaphore* sem)
+{
+  csem_down(sem);
+  for(int i = 0; i < 20; i++)
+  {
+    printf("****func2****%d\n",i);
+  }
+  sleep(10);
+  csem_up(sem);
+}
+
+void func3(struct counting_semaphore* sem)
+{
+  csem_down(sem);
+  for(int i = 0; i < 20; i++)
+  {
+      printf("^^^^func3^^^^%d\n",i);
+  }  
+  sleep(10);
+  csem_up(sem);
+}
+
+void func4(struct counting_semaphore* sem)
+{
+  csem_down(sem);
+  for(int i = 0; i < 100; i++)
+  {
+      printf("###func4###\n");
+  }  
+  csem_up(sem);
+}
+
+void func5(struct counting_semaphore* sem)
+{
+  csem_down(sem);
+  for(int i = 0; i < 10; i++)
+  {
+      printf("&&&func5&&&\n");
+  }  
+  csem_up(sem);
 }
 
 int main()
 {
-bsem_alloc();
-
-bsem_free(0);
-
-bsem_down(0);
-
-bsem_up(0);
-
-csem_alloc(0);
-
-csem_free(0);
-
-csem_down(0);
-
-csem_up(0);
-
-
-    //forkfork("");
-    // fork();
-    // void* stack = malloc(STACK_SIZE);
-    // kthread_create(&tfunc,stack);
-    // printf("id is: %d\n",kthread_id());
-    // //print_ptable();
-    // sleep(10);
+    struct counting_semaphore sem;
+    csem_alloc(&sem,2);
+    int pid = fork();
+    if(pid == 0)
+    {
+      //child
+      func1(&sem);
+    }
+    else 
+    {
+      int pid2 = fork();
+      if (pid2 == 0)
+      {
+        //child2
+        func3(&sem);
+      }
+      else
+      {
+        //parent
+        func2(&sem);
+        int status;
+        wait(&status);
+      }
+      
+    } 
     exit(1);
 }

@@ -1,8 +1,6 @@
 struct stat;
 struct rtcdate;
 struct sigaction;
-struct counting_semaphore;
-
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -36,10 +34,6 @@ int bsem_alloc(void);
 void bsem_free(int);
 void bsem_down(int);
 void bsem_up(int);
-int csem_alloc(struct counting_semaphore *);
-void csem_free(struct counting_semaphore *);
-void csem_down(struct counting_semaphore *);
-void csem_up(struct counting_semaphore *);
 
 void print_ptable(void);
 
@@ -59,3 +53,7 @@ void free(void*);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
+
+
+// Csemaphore.c
+
