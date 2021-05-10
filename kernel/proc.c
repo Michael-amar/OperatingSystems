@@ -134,7 +134,6 @@ exit_thread(int status)
 
   if (alive_threads == 0)
   {
-    printf("killed proccess\n");
     // Close all open files.
     for(int fd = 0; fd < NOFILE; fd++){
       if(p->ofile[fd]){
