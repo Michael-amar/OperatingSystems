@@ -678,11 +678,14 @@ sched(void)
 {
   int intena;
   struct thread *t = mythread();
-  //printf("noff:%d\n",mycpu()->noff);
+  
   if(!holding(&t->lock))
     panic("sched t->lock");
   if(mycpu()->noff != 1)
+  {
+    printf("noff:%d\n",mycpu()->noff);
     panic("sched locks");
+  }
   if(t->state == RUNNING)
     panic("sched running");
   if(intr_get())
@@ -968,6 +971,7 @@ void  semaphoresinit(void)
   {
     semaphores[i].state = UNUSED_SEM;
     semaphores[i].taken = 0;
+    initlock(&semaphores[i].lk, "sempaphore lock");
   }
 }
 
@@ -1001,24 +1005,24 @@ void
 bsem_down(int fd)
 {
   
-  struct semaphore sem = semaphores[fd];
-  // push_off();
-  printf("bsem_down\n");
-
-  while(sem.taken)
+  struct semaphore* sem = &semaphores[fd];
+  while(__sync_lock_test_and_set(&sem->taken, 1) != 0)
   {
-    printf("going to sleep\n");
-    sleep(sem.chan, sem.lk);
+    acquire(&sem->lk);
+    sleep(sem->chan, &sem->lk);
+    release(&sem->lk);
   }
-  sem.taken = 1;
-  // pop_off();
+
+  __sync_synchronize();
+  return;
 }
 
 void
 bsem_up(int fd)
 {
-  //printf("bsem_up\n");
-  semaphores[fd].taken = 0;
+  struct semaphore* sem = &semaphores[fd];
+  __sync_lock_test_and_set(&sem->taken, 0);
+  wakeup(sem->chan);
 }
 
 int 
