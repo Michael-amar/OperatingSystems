@@ -165,3 +165,98 @@ sys_print_ptable(void)
   print_ptable();
   return 0;
 }
+
+
+uint64
+sys_bsem_alloc(void)
+{
+  return bsem_alloc();
+}
+
+uint64
+sys_bsem_free(void)
+{
+
+  int fd;
+  if(argint(0, &fd) < 0)
+  {
+    return -1;
+  }
+  bsem_free(fd);
+  return 0;
+}
+
+uint64
+sys_bsem_down(void)
+{
+  int fd;
+  if(argint(0, &fd) < 0)
+  {
+    return -1;
+  }
+  bsem_down(fd);
+  return 0;
+}
+
+uint64
+sys_bsem_up(void)
+{
+  int fd;
+  if(argint(0, &fd) < 0)
+  {
+    return -1;
+  }
+  bsem_up(fd);
+  return 0;
+}
+
+
+uint64
+sys_csem_alloc(void)
+{
+  uint64 sem;
+  if(argaddr(0, &sem) < 0)
+  {
+    return -1;
+  }
+  return csem_alloc(sem);
+}
+
+uint64
+sys_csem_free(void)
+{
+  uint64 sem;
+  if(argaddr(0, &sem) < 0)
+  {
+    return -1;
+  }
+  csem_free(sem);
+  return 0;
+}
+
+uint64
+sys_csem_down(void)
+{
+  uint64 sem;
+  if(argaddr(0, &sem) < 0)
+  {
+    return -1;
+  }
+  csem_down(sem);
+  return 0;
+}
+
+uint64
+sys_csem_up(void)
+{
+  uint64 sem;
+  if(argaddr(0, &sem) < 0)
+  {
+    return -1;
+  }
+  csem_up(sem);
+  return 0;
+}
+
+
+

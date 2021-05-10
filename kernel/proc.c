@@ -6,11 +6,14 @@
 #include "proc.h"
 #include "defs.h"
 #include "user/sigaction.h"
+#include "semaphore.h"
 
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
 
+
+struct semaphore semaphores[MAX_BSEM];
 struct proc *initproc;
 
 int nextpid = 1;
@@ -959,6 +962,93 @@ kthread_create_ret(void)
   usertrapret();
 }
 
+void  semaphoresinit(void)
+{
+  for(int i = 0; i < MAX_BSEM; i++)
+  {
+    semaphores[i].state = UNUSED_SEM;
+    semaphores[i].taken = 0;
+  }
+}
+
+int 
+bsem_alloc(void)
+{
+  printf("bsem_alloc\n");
+
+  for(int i = 0; i < MAX_BSEM; i++)
+  {
+    if(semaphores[i].state == UNUSED_SEM)
+    {
+      semaphores[i].state = USED_SEM;
+      semaphores[i].taken = 0;
+      return i;
+    }
+  }
+  return -1;
+}
+
+void
+bsem_free(int fd)
+{
+  printf("bsem_free\n");
+
+  semaphores[fd].state = UNUSED_SEM;
+  semaphores[fd].taken = 0;
+}
+
+void
+bsem_down(int fd)
+{
+  
+  struct semaphore sem = semaphores[fd];
+  // push_off();
+  printf("bsem_down\n");
+
+  while(sem.taken)
+  {
+    printf("going to sleep\n");
+    sleep(sem.chan, sem.lk);
+  }
+  sem.taken = 1;
+  // pop_off();
+}
+
+void
+bsem_up(int fd)
+{
+  //printf("bsem_up\n");
+  semaphores[fd].taken = 0;
+}
+
+int 
+csem_alloc(uint64 sem)
+{
+  printf("csem_alloc()\n");
+  return 0;
+}
+
+void
+csem_free(uint64 sem)
+{
+  printf("csem_free()\n");
+}
+
+void
+csem_down(uint64 sem)
+{
+  printf("csem_down()\n");
+}
+
+void
+csem_up(uint64 sem)
+{
+  printf("csem_up()\n");
+}
+
+
+
+
 void print_ptable(void)
 {
   for (int i=0 ; i<5 ; i++)
@@ -988,3 +1078,5 @@ void print_ptable(void)
     }
   }
 }
+
+

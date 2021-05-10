@@ -98,7 +98,8 @@ sbrkbugs(char *s)
 
 void tfunc()
 {
-  for(int i=0 ; i<10 ; i++)
+    printf("id is: %d\n",kthread_id());
+    for(int i=0 ; i<10 ; i++)
   {
     printf("hello %d\n",i);
   }
@@ -107,10 +108,29 @@ void tfunc()
 
 int main()
 {
+bsem_alloc();
+
+bsem_free(0);
+
+bsem_down(0);
+
+bsem_up(0);
+
+csem_alloc(0);
+
+csem_free(0);
+
+csem_down(0);
+
+csem_up(0);
+
 
     //forkfork("");
-    void* stack = malloc(STACK_SIZE);
-    kthread_create(&tfunc,stack);
-    sleep(10);
+    // fork();
+    // void* stack = malloc(STACK_SIZE);
+    // kthread_create(&tfunc,stack);
+    // printf("id is: %d\n",kthread_id());
+    // //print_ptable();
+    // sleep(10);
     exit(1);
 }

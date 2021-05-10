@@ -10,6 +10,7 @@ struct stat;
 struct superblock;
 struct trapframe;
 struct thread; 
+struct semaphore;
 
 // bio.c
 void            binit(void);
@@ -55,6 +56,14 @@ int             readi(struct inode*, int, uint64, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
+int             bsem_alloc(void);
+void            bsem_free(int fd);
+void            bsem_down(int fd);
+void            bsem_up(int fd);
+int             csem_alloc(uint64 sem);
+void            csem_free(uint64 sem);
+void            csem_down(uint64 sem);
+void            csem_up(uint64 sem);
 
 // ramdisk.c
 void            ramdiskinit(void);
@@ -119,7 +128,7 @@ int             kthread_exit(int);
 int             kthread_join(int, uint64);
 void            kthread_create_ret(void);
 void            print_ptable(void);
-
+void            semaphoresinit(void);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

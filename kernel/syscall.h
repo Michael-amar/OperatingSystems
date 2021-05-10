@@ -27,4 +27,13 @@
 #define SYS_kthread_id          26
 #define SYS_kthread_exit        27
 #define SYS_kthread_join        28
-#define SYS_print_ptable        29
+#define SYS_bsem_alloc          29
+#define SYS_bsem_free           30
+#define SYS_bsem_down           31
+#define SYS_bsem_up             32
+#define SYS_csem_alloc          33
+#define SYS_csem_free           34
+#define SYS_csem_down           35
+#define SYS_csem_up             36
+
+#define SYS_print_ptable        37

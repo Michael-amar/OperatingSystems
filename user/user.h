@@ -1,6 +1,7 @@
 struct stat;
 struct rtcdate;
 struct sigaction;
+struct counting_semaphore;
 
 // system calls
 int fork(void);
@@ -31,6 +32,15 @@ int kthread_create(void (*start_func) () , void *stack );
 int kthread_id(void);
 int kthread_exit(int);
 int kthread_join(int, int*);
+int bsem_alloc(void);
+void bsem_free(int);
+void bsem_down(int);
+void bsem_up(int);
+int csem_alloc(struct counting_semaphore *);
+void csem_free(struct counting_semaphore *);
+void csem_down(struct counting_semaphore *);
+void csem_up(struct counting_semaphore *);
+
 void print_ptable(void);
 
 // ulib.c
