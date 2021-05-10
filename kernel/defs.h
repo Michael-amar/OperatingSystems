@@ -120,7 +120,7 @@ int             alloctid();
 void            exit_thread(int);
 int             kthread_create(uint64, uint64);
 int             kthread_id();
-int             kthread_exit(int);
+void             kthread_exit(int);
 int             kthread_join(int, uint64);
 void            kthread_create_ret(void);
 void            print_ptable(void);

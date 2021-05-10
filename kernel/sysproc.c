@@ -146,7 +146,8 @@ uint64 sys_kthread_exit(void)
   {
     return -1;
   }
-  return kthread_exit(status);
+  kthread_exit(status);
+  return 0;
 }
 uint64 sys_kthread_join(void)
 {

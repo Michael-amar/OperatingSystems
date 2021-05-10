@@ -119,10 +119,12 @@ exit_thread(int status)
 {
 
   struct thread *t = mythread();
+  struct proc* p = t->parent;
 
-  acquire(&t->parent->lock);
-  int alive_threads = t->parent->alive_threads;
-  release(&t->parent->lock);
+  acquire(&p->lock);
+  p->alive_threads--;
+  int alive_threads = p->alive_threads;
+  release(&p->lock);
 
   acquire(&wait_lock);
   acquire(&t->lock);
@@ -131,7 +133,25 @@ exit_thread(int status)
   t->state = ZOMBIE;
 
   if (alive_threads == 0)
-    t->parent->state = ZOMBIE_P;
+  {
+    printf("killed proccess\n");
+    // Close all open files.
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(p->ofile[fd]){
+        struct file *f = p->ofile[fd];
+        fileclose(f);
+        p->ofile[fd] = 0;
+      }
+    }
+
+    begin_op();
+    iput(p->cwd);
+    end_op();
+    p->cwd = 0;
+
+    p->state = ZOMBIE_P;
+    p->killed = 1;
+  }
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -518,19 +538,6 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
-  // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
-    }
-  }
-
-  begin_op();
-  iput(p->cwd);
-  end_op();
-  p->cwd = 0;
 
   acquire(&wait_lock);
 
@@ -543,18 +550,21 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  p->state = ZOMBIE_P;
+  // p->state = ZOMBIE_P;
 
   release(&p->lock);
 
   for(struct thread* t = p->threads; t < &p->threads[NTHREAD]; t++)
   {
     acquire(&t->lock);
-    t->killed = 1;
-    if(t->state == SLEEPING)
+    if (t->state != UNUSED)
     {
-      t->state = RUNNABLE;
-    }
+      t->killed = 1;
+      if(t->state == SLEEPING)
+      {
+        t->state = RUNNABLE;
+      }
+      }
     release(&t->lock);
   } 
   release(&wait_lock);
@@ -948,10 +958,9 @@ int kthread_id ()
   return mythread()->tid;
 }
 
-int kthread_exit(int status) 
+void kthread_exit(int status) 
 {
-  printf("kthread_exit\n");
-  return 0;
+  exit_thread(status);
 }
 
 int kthread_join(int thread_id , uint64 status) 
