@@ -960,6 +960,9 @@ int kthread_id ()
 
 void kthread_exit(int status) 
 {
+  struct proc* p =myproc();
+  if (p->alive_threads == 1)
+    exit(status);
   exit_thread(status);
 }
 

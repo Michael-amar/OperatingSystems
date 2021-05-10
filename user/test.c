@@ -13,7 +13,7 @@ void func1()
   {
     printf("thread1 func %d\n",i);
   }
-  exit(1);
+  kthread_exit(1);
 }
 
 
@@ -26,6 +26,6 @@ int main()
     void* stack1 = malloc(STACK_SIZE);
     kthread_create(func1,stack1);
     // printf("hello");
-    exit(157);
+    kthread_exit(157);
     return 0;
 }
