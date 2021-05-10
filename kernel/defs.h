@@ -125,7 +125,7 @@ int             kthread_join(int, uint64);
 void            kthread_create_ret(void);
 void            print_ptable(void);
 void            semaphoresinit(void);
-
+int garbage(uint64);
 // swtch.S
 void            swtch(struct context*, struct context*);
 

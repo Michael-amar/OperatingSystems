@@ -968,8 +968,30 @@ void kthread_exit(int status)
 
 int kthread_join(int thread_id , uint64 status) 
 {
-  printf("kthread_join\n");
-  return 0;
+  struct proc* p = myproc();
+
+  for(struct thread *t = p->threads; t < &p->threads[NTHREAD]; t++)
+  {
+    if(t->tid == thread_id)
+    {
+      while(1)
+      {
+
+        printf("");
+        if( t->state == ZOMBIE)
+          break;
+      }
+      copyout(p->pagetable,status,(char*)&t->xstate,sizeof(t->xstate));
+      return 0;
+
+    }
+  }
+  return -1;
+}
+
+int garbage(uint64 a)
+{
+  return a+15;
 }
 
 void
