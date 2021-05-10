@@ -124,6 +124,7 @@ exit_thread(int status)
   int alive_threads = t->parent->alive_threads;
   release(&t->parent->lock);
 
+  acquire(&wait_lock);
   acquire(&t->lock);
 
   t->xstate = status;
@@ -167,6 +168,7 @@ proc_mapstacks(pagetable_t kpgtbl)
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((((int) (p - proc))*8) + ((int) (t-p->threads)));
+      // uint64 va = KSTACK2(((int) (p - proc)), ((int) (t-p->threads)));
       kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
     }
   }
@@ -188,6 +190,7 @@ procinit(void)
       {
         initlock(&t->lock, "thread");
         t->kstack = KSTACK((int) (((p - proc)*8)+(((int) (t-p->threads)))));
+        // t->kstack = KSTACK2(((int) (p - proc)), ((int) (t-p->threads)));
       }
   }
 }
@@ -436,7 +439,6 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -555,6 +557,7 @@ exit(int status)
     }
     release(&t->lock);
   } 
+  release(&wait_lock);
   exit_thread(status);
 
   
@@ -918,7 +921,6 @@ void sigret(void)
 
 int kthread_create(uint64 func_addr ,uint64 stack ) 
 {
-  printf("kthread_create\n");
   struct proc *p = myproc();
   struct thread *nt = allocthread(p);
 
@@ -932,7 +934,7 @@ int kthread_create(uint64 func_addr ,uint64 stack )
 
   copy_tf(nt->trapframe, t->trapframe);
   nt->trapframe->epc = func_addr;
-  nt->trapframe->sp = stack; //TODO:
+  nt->trapframe->sp = stack + STACK_SIZE - 16; //TODO:
   nt->state = RUNNABLE;
   nt->context.ra = (uint64) kthread_create_ret;
 
@@ -961,7 +963,11 @@ int kthread_join(int thread_id , uint64 status)
 void
 kthread_create_ret(void)
 {
-  release(&mythread()->lock);
+  struct thread* t = mythread();
+  t->killed=0;
+  // still holding t->lock from scheduler
+  release(&t->lock);
+
   usertrapret();
 }
 
@@ -978,7 +984,6 @@ void  semaphoresinit(void)
 int 
 bsem_alloc(void)
 {
-  printf("bsem_alloc\n");
 
   for(int i = 0; i < MAX_BSEM; i++)
   {
@@ -995,7 +1000,6 @@ bsem_alloc(void)
 void
 bsem_free(int fd)
 {
-  printf("bsem_free\n");
 
   semaphores[fd].state = UNUSED_SEM;
   semaphores[fd].taken = 0;
@@ -1063,3 +1067,6 @@ void print_ptable(void)
 }
 
 
+
+
+  

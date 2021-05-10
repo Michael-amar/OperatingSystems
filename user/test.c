@@ -5,43 +5,42 @@
 #include "sigaction.h"
 #include "Csemaphore.h"
 
-
 struct counting_semaphore* sem;
 
 void func1()
 {
-  printf("func1\n");
   csem_down(sem);
-  for (int i=0 ; i<20 ; i++)
+  for (int i=0 ;i<100; i++)
   {
-    printf("---func1---%d\n", i);
+    printf("thread1 func\n");
   }
-  sleep(10);
   csem_up(sem);
+  while(1);
+  exit(1);
 }
 
 void func2()
 {
-  printf("func2\n");
   csem_down(sem);
-  for(int i = 0; i < 20; i++)
+  for (int i=0 ;i<100; i++)
   {
-    printf("****func2****%d\n",i);
+    printf("thread2 func\n");
   }
-  sleep(10);
   csem_up(sem);
+  while(1);
+  exit(1);
 }
 
 void func3()
 {
-  printf("func3\n");
   csem_down(sem);
-  for(int i = 0; i < 20; i++)
+  for (int i=0 ;i<100; i++)
   {
-      printf("^^^^func3^^^^%d\n",i);
-  }  
-  sleep(10);
+    printf("thread3 func\n");
+  }
   csem_up(sem);
+  while(1);
+  exit(1);
 }
 
 
@@ -49,12 +48,15 @@ int main()
 {
     sem = malloc(sizeof(struct counting_semaphore));
     csem_alloc(sem,2);
-
     void* stack1 = malloc(STACK_SIZE);
-    // void* stack2 = malloc(STACK_SIZE);
-    // void* stack3 = malloc(STACK_SIZE);
+    void* stack2 = malloc(STACK_SIZE);
+    void* stack3 = malloc(STACK_SIZE);
     kthread_create(func1,stack1);
-    // kthread_create(func2,stack2);
-    // kthread_create(func3,stack3);
+    kthread_create(func2,stack2);
+    kthread_create(func3,stack3);
+    while(1)
+    {
+      sleep(150);
+    }
     exit(1);
 }
