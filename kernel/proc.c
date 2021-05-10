@@ -932,7 +932,7 @@ int kthread_create(uint64 func_addr ,uint64 stack )
 
   copy_tf(nt->trapframe, t->trapframe);
   nt->trapframe->epc = func_addr;
-  nt->trapframe->sp = stack;
+  nt->trapframe->sp = stack; //TODO:
   nt->state = RUNNABLE;
   nt->context.ra = (uint64) kthread_create_ret;
 
