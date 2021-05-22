@@ -119,6 +119,14 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  if (p->pid > 1)
+  {
+    release(&p->lock);
+    createSwapFile(p);
+    acquire(&p->lock);
+  }
+
+  memset(&p->pages_on_disk, 0 , MAX_TOTAL_PAGES * sizeof(struct page_on_disk));
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){

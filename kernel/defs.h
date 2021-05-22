@@ -181,6 +181,13 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
+//our functions:
+int             countmemory(pagetable_t pagetable);
+int             counttotal(pagetable_t pagetable);
+void            page_swap_out(pagetable_t pagetable);
+pte_t*          pick_page_to_swap(pagetable_t pagetable);
+void            ppages();
+
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);

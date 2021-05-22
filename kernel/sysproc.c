@@ -95,3 +95,10 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_ppages(void)
+{
+  ppages();
+  return 0;
+}

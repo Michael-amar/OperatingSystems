@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -224,13 +226,18 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
     return oldsz;
 
   oldsz = PGROUNDUP(oldsz);
-  for(a = oldsz; a < newsz; a += PGSIZE){
+  for(a = oldsz; a < newsz; a += PGSIZE)
+  {
+    if (countmemory(pagetable) >= MAX_PSYC_PAGES)
+      page_swap_out(pagetable);
     mem = kalloc();
-    if(mem == 0){
+    if(mem == 0)
+    {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
+    
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
@@ -428,4 +435,79 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int countmemory(pagetable_t pagetable)
+{
+  int counter=0;
+  for(int i = 0; i < 512; i++)
+  {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      uint64 child = PTE2PA(pte);
+      counter += countmemory((pagetable_t)child);
+    } 
+    else if((pte & PTE_V) && ((pte & PTE_PG) == 0))
+    {
+      counter++;
+    }
+  }
+  return counter;
+}
+
+int counttotal(pagetable_t pagetable)
+{
+  int counter=0;
+  for(int i = 0; i < 512; i++)
+  {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      uint64 child = PTE2PA(pte);
+      counter += counttotal((pagetable_t)child);
+    } 
+    else if((pte & PTE_V) || (pte & PTE_PG))
+    {
+      counter++;
+    }
+  }
+  return counter;
+}
+
+void page_swap_out(pagetable_t pagetable)
+{
+  printf("pick_page_to_swap\n");
+  pte_t* pte = pick_page_to_swap(pagetable);
+  *pte = *pte | PTE_PG;
+  
+}
+
+pte_t* pick_page_to_swap(pagetable_t pagetable)
+{
+  for(int i = 0; i < 512; i++)
+  {
+    pte_t* pte = &pagetable[i];
+    if((*pte & PTE_V) && (*pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      uint64 child = PTE2PA(*pte);
+      return pick_page_to_swap((pagetable_t)child);
+    } 
+    else if(*pte & PTE_V)
+    {
+      if((*pte & PTE_PG) == 0) // and page is not paged out
+      {
+        if ((*pte & PTE_U) != 0) // and its a user page
+        {
+          return pte;
+        }
+      }
+    }
+  }
+  panic("no page picked");
+  return 0;
+}
+
+void ppages()
+{
+  struct proc* p = myproc();
+  printf("total pages:%d\n", counttotal(p->pagetable));
+  printf("pages in memory:%d\n", countmemory(p->pagetable));
 }
