@@ -126,7 +126,12 @@ found:
     acquire(&p->lock);
   }
 
-  memset(&p->pages_on_disk, 0 , MAX_TOTAL_PAGES * sizeof(struct page_on_disk));
+  for (struct page* pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
+  {
+    int index = (int) (pg - p->pages);
+    pg->on_disk = 0;
+    pg->va = index * PGSIZE;
+  }
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -283,11 +288,31 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-
+  printf("fork\n");
+  ppages();
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
+
+  // struct page_on_disk* pod;
+  // for ( pod = p->pages_on_disk; pod < &p->pages_on_disk[MAX_TOTAL_PAGES] ; pod++)
+  // {
+  //   uint index = (uint) (pod - p->pages_on_disk);
+  //   np->pages_on_disk[index].offset = pod->offset;
+  //   np->pages_on_disk[index].taken = pod->taken;
+  //   np->pages_on_disk[index].pte = pod->pte;
+
+  //   // copy swap file info
+  //   if(pod->taken)
+  //   {
+  //     char * mem = kalloc();
+  //     readFromSwapFile(p, mem, pod->offset, PGSIZE);
+  //     writeToSwapFile(np, mem, pod->offset, PGSIZE);
+  //     kfree(mem);
+  //   }
+  // }
+
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){

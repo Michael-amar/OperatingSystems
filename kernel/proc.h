@@ -82,14 +82,16 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct page_on_disk{
-  uint offset;
-  pte_t* pte;
-  int taken;
+struct page
+{
+  uint64 va;    // the first va of this page
+  int on_disk;  // flag indicates if the page is on disk or not
+  uint offset;  // offset of the file on the disk (if relevant)
 };
 
 // Per-process state
-struct proc {
+struct proc 
+{
   struct spinlock lock;
 
   // p->lock must be held when using these:
@@ -113,5 +115,5 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   struct file *swapFile;
-  struct page_on_disk pages_on_disk[MAX_TOTAL_PAGES];
+  struct page pages[MAX_TOTAL_PAGES];
 };

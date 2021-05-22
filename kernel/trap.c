@@ -74,23 +74,25 @@ usertrap(void)
   else if ((p->pid > 2) && (r_scause() == 13 || r_scause() == 15 || r_scause() == 12))
   {
     //page fault
-
+    
     uint64 fault_addr = r_stval();
+    
     pte_t* pte = walk(p->pagetable, fault_addr, 0);
-    int res = 0;
+    uint64 va = PGROUNDDOWN(fault_addr);
+    //ppages();
+    printf("page fault %d\n", va);
+    int res = 1;
     if ((*pte & PTE_PG))
     {
-      int res = page_swap_in(p->pagetable, pte, p);
-      printf("swap in :%p , %d\n",pte,res);
-      if(res == 0)
-        p->trapframe->epc -=4; // retry command that caused page fault
-      else 
-      {  
-        //printf("swap_in failed\n");   
-      }
+      res = page_swap_in(p->pagetable, va, p);
+      if (res != 0)
+        printf("swap_in failed\n");   
+      
     }
     if (res != 0 )
     {
+      print_pages(p->pagetable);
+      printf("fault address:%p\n",(void*) fault_addr);
       printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
       printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
       p->killed = 1;
