@@ -180,6 +180,8 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             page_swap_in(pagetable_t pagetable, pte_t* pte, struct proc *p);
+pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
 
 //our functions:
 int             countmemory(pagetable_t pagetable);

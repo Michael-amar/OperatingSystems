@@ -119,7 +119,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  if (p->pid > 1)
+  if (p->pid > 2)
   {
     release(&p->lock);
     createSwapFile(p);

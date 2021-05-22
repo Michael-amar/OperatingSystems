@@ -84,7 +84,7 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 struct page_on_disk{
   uint offset;
-  pte_t pte;
+  pte_t* pte;
   int taken;
 };
 

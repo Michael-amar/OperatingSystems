@@ -173,13 +173,17 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0)
+    if(((*pte & PTE_V) == 0) && ((*pte & PTE_PG) == 0))
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free){
-      uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+    if(do_free)
+    {
+      if ((*pte & PTE_PG) == 0)
+      {
+        uint64 pa = PTE2PA(*pte);
+        kfree((void*)pa);
+      }
     }
     *pte = 0;
   }
@@ -475,10 +479,37 @@ int counttotal(pagetable_t pagetable)
 
 void page_swap_out(pagetable_t pagetable)
 {
-  printf("pick_page_to_swap\n");
+  printf("swapped out \n");
+  struct proc* p = myproc();
+  struct page_on_disk* pg;
+
   pte_t* pte = pick_page_to_swap(pagetable);
-  *pte = *pte | PTE_PG;
   
+  // search for free entry in the file
+  for(pg = p->pages_on_disk; pg <&p->pages_on_disk[MAX_TOTAL_PAGES] ; pg++)
+  {
+    if(!pg->taken)
+    {
+      printf("swapped out pte:%p\n",pte);
+      pg->taken = 1;
+      pg->pte = pte;
+      pg->offset = ((uint) (pg - p->pages_on_disk)) * PGSIZE;
+      break;
+    }
+  }
+
+  int res = writeToSwapFile(p, (char*) PTE2PA(*pte), pg->offset, PGSIZE);
+  printf("writeToSwapFile returned:%d\n",res);
+
+  // free physical memory
+  uint64 pa = PTE2PA(*pte);
+  kfree((void*)pa);
+
+  // mark page as swapped out
+  *pte = (*pte | PTE_PG) ^ PTE_V;
+  
+  // refresh TLB
+  sfence_vma();
 }
 
 pte_t* pick_page_to_swap(pagetable_t pagetable)
@@ -504,6 +535,44 @@ pte_t* pick_page_to_swap(pagetable_t pagetable)
   panic("no page picked");
   return 0;
 }
+
+// returns 0 if success
+// returns -1 if kalloc failed or -2 if pte not found
+int page_swap_in(pagetable_t pagetable, pte_t* pte, struct proc *p)
+{
+  //printf("swapped in pte:%p\n",pte);
+  struct page_on_disk* pod;
+  for(pod = p->pages_on_disk; pod < &p->pages_on_disk[MAX_TOTAL_PAGES]; pod++)
+  {
+    if(pod->taken && (pod->pte == pte))
+    {
+      char buffer[PGSIZE];
+      printf("hello\n");
+      readFromSwapFile(p, buffer, pod->offset, PGSIZE);
+      pod->taken =0;
+      pod->pte =0;
+      pod->offset =0;
+
+      if (countmemory(p->pagetable) >= MAX_PSYC_PAGES)
+        page_swap_out(pagetable);
+
+      char* mem = kalloc();
+      if(mem == 0)
+      {
+        //printf("kalloc failed\n");
+        return -1;
+      }
+
+      memmove(mem, &buffer, PGSIZE);
+
+      int perm = (*pte) & 1023; //gives me the lower 10bits (permissions)
+      *pte = (PA2PTE(mem) | perm | PTE_V) ^ PTE_PG;
+      return 0;
+    }
+  }
+  return -2;
+}
+
 
 void ppages()
 {
