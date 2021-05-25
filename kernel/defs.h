@@ -182,7 +182,8 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p);
 pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
-
+void add_page(pagetable_t pagetable, uint64 va);
+void remove_page(pagetable_t pagetable, uint64 va);
 //our functions:
 int             countmemory(pagetable_t pagetable);
 int             counttotal(pagetable_t pagetable);

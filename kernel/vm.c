@@ -151,7 +151,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
-      break;
+      break;  
     a += PGSIZE;
     pa += PGSIZE;
   }
@@ -179,13 +179,16 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free)
     {
+      
       if ((*pte & PTE_PG) == 0)
       {
         uint64 pa = PTE2PA(*pte);
         kfree((void*)pa);
       }
     }
+    remove_page(pagetable, a);
     *pte = 0;
+    
   }
 }
 
@@ -248,6 +251,10 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
+
+    if (a % PGSIZE != 0)
+      panic("a is not aligned");
+    add_page(pagetable, a);
   }
   return newsz;
 }
@@ -480,7 +487,7 @@ int counttotal(pagetable_t pagetable)
 
 // returns free offset in swapFile that can be written 
 uint get_offset()
-{ 
+{   
   struct proc* p = myproc();
   for (uint offset = 0 ; offset < MAX_PSYC_PAGES* PGSIZE ; offset+= PGSIZE)
   {
@@ -503,7 +510,7 @@ void page_swap_out(pagetable_t pagetable)
   struct proc* p = myproc();
 
   struct page* pg_to_swap = pick_page_to_swap(pagetable);
-  printf("swapping out page starting in:%d\n", pg_to_swap->va);
+  //printf("swapping out page starting in:%d\n", pg_to_swap->va);
   uint offset = get_offset();
 
   uint64 pa = walkaddr(pagetable, pg_to_swap->va);
@@ -529,23 +536,96 @@ struct page* pick_page_to_swap(pagetable_t pagetable)
   struct page* pg = p->pages;
   for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
   {
-    if (pg->va == 4096 || pg->va == 0)
-      continue; //we dont want to swap text page
-    pte_t* pte = walk(pagetable, pg->va, 0);
-    if ((*pte & PTE_V)) // if valid page
+    if (pg->used)
     {
-      if ((*pte & PTE_PG) == 0) // and page is not pages out
+      //printf("va %d\n", pg->va);  
+      if (pg->va == 4096 || pg->va == 0)
+        continue; //we dont want to swap text page
+      pte_t* pte = walk(pagetable, pg->va, 0);
+      if ((*pte & PTE_V)) // if valid page
       {
-        if(*pte & PTE_U)  // and its a user page
+        if ((*pte & PTE_PG) == 0) // and page is not pages out
         {
-          return pg;
-        } 
+          if(*pte & PTE_U)  // and its a user page
+          {
+            return pg;
+          } 
+        }
       }
     }
   }
   panic("no page returned");
   return 0;
 }
+
+struct page* pick_page_to_swap_(pagetable_t pagetable)
+{
+  //struct proc* p = myproc();
+  #ifdef SELECTION
+    switch(SELECTION)
+    {
+      case SCFIFO:
+        return find_fifo_page(pagetable, p);
+      case LAPA:
+        return find_min_burst();
+      case NFUA:
+        return find_min_ratio();
+    }
+  #endif
+  panic("no selection picked!");
+  return 0;
+}
+
+// struct page* find_fifo_page(pagetable_t pagetable, struct proc *p)
+// {
+
+
+//   struct page* pg;
+//   struct proc* p =myproc();
+//     //printf("pick page\n");
+//     struct page* first = 0;
+//     uint min = -1;
+
+//     // find first page
+//     for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++ )
+//     {
+//       pte_t *pte = walk(pagetable, pg->va, 0);
+
+//       if (pg->used && pg->on_disk == 0)
+//       {
+
+//         if ((*pte & PTE_V)) // if its valid page
+//         {
+//           if ((*pte & PTE_PG) == 0) // and not paged out
+//           {
+//             if(*pte & PTE_U)  // and user page
+//             {
+//               if (pg->time <= min)
+//               {
+//                 min = pg->time;
+//                 first = pg;
+//               }
+//             }
+//           }
+//         }
+//     }
+
+//     if (first != 0)
+//     {
+//       // if accessed give it second change
+//       if (*first->pte & PTE_A)
+//       {
+//         *first->pte = (*first->pte ^ PTE_A); 
+//         printf("%d", (*first->pte & PTE_A));
+//       }
+//       else
+//         return first->pte;
+//     }
+
+//   }
+//   return 0;
+// }
+
 
 // returns 0 if success
 // returns -1 if kalloc failed 
@@ -554,7 +634,7 @@ struct page* pick_page_to_swap(pagetable_t pagetable)
 // va must be aligned to the first va of the requested page
 int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
 {
-  printf("pid:%d swapping in page starting at va:%d\n",p->pid,  va);
+  //printf("pid:%d swapping in page starting at va:%d\n",p->pid,  va);
   struct page* pg;
   for ( pg =p->pages ; pg <&p->pages[MAX_TOTAL_PAGES] ; pg++)  
   {
@@ -590,21 +670,74 @@ void ppages()
   struct proc* p = myproc();
   printf("total pages:%d\n", counttotal(p->pagetable));
   printf("pages in memory:%d\n", countmemory(p->pagetable));
-  //print_pages(p->pagetable);
+  print_pages(p->pagetable);
 }
 
 void print_pages(pagetable_t pagetable)
 {
-  for(int i = 0; i < 512; i++)
+   struct proc* p = myproc();
+   struct page* pg;
+   for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
+      printf("va : %d, on disk: %d ,  offset : %d , used : %d \n",pg->va , pg->on_disk , pg->offset , pg->used);
+
+  // for(int i = 0; i < 512; i++)
+  // {
+  //   pte_t* pte = &pagetable[i];
+  //   if((*pte & PTE_V) && (*pte & (PTE_R|PTE_W|PTE_X)) == 0){
+  //     uint64 child = PTE2PA(*pte);
+  //     print_pages((pagetable_t)child);
+  //   } 
+  //   else if((*pte & PTE_V) || ((*pte & PTE_PG)))
+  //   {
+  //     printf("pte address of pid %d = %p\n",myproc()->pid, pte);
+  //   }
+  // }
+}
+
+
+// find unused page struct in p->pages and set its va
+void add_page(pagetable_t pagetable, uint64 va)
+{
+  struct proc* p = myproc();
+  if (p->pid > 1) // we want the shell process to add pages to sub processes so > 1 and not > 2
   {
-    pte_t* pte = &pagetable[i];
-    if((*pte & PTE_V) && (*pte & (PTE_R|PTE_W|PTE_X)) == 0){
-      uint64 child = PTE2PA(*pte);
-      print_pages((pagetable_t)child);
-    } 
-    else if((*pte & PTE_V) || ((*pte & PTE_PG)))
+    struct page* pg;
+    for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
     {
-      printf("pte address of pid %d = %p\n",myproc()->pid, pte);
+      if (pg->used == 0)
+      {
+        pg->pagetable = pagetable;
+        pg->used = 1;
+        pg->va = va;
+        pg->time = ticks;
+        return;
+      }
+    } 
+  }
+}
+
+void remove_page(pagetable_t pagetable, uint64 va)
+{
+  struct proc* p = myproc();
+  if (p->pid > 2)
+  {
+  struct page* pg;
+  for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
+  {
+    if (pg->used == 1)
+    {
+      if (pg->va == va)
+      {
+        
+          pg->used = 0;
+          pg->va = 0;
+          pg->offset = 0;
+          pg->on_disk = 0;
+          pg->pagetable = 0;
+          return;
+
+      }
     }
+  } 
   }
 }

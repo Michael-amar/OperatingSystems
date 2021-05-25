@@ -84,9 +84,12 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 struct page
 {
+  pagetable_t pagetable; // the pagetable the page belongs to
   uint64 va;    // the first va of this page
   int on_disk;  // flag indicates if the page is on disk or not
   uint offset;  // offset of the file on the disk (if relevant)
+  int used;     
+  uint time;
 };
 
 // Per-process state

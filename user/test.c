@@ -6,10 +6,13 @@ int main()
 {
     printf("test\n");
     ppages();
-    char* a =(char*) malloc(102400);
-    for (int i=0; i<102400 ; i++)
-        a[i] = '1';
-    printf("%c\n",a[0]);
+    malloc(1);
+    ppages();
+    malloc(50000);
+    //char* a =(char*) malloc(1);
+    // for (int i=0; i<102400 ; i++)
+    //     a[i] = '1';
+    // printf("%c\n",a[0]);
     ppages();
     exit(0);
     return 0;

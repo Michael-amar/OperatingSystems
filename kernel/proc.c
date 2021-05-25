@@ -128,9 +128,10 @@ found:
 
   for (struct page* pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
   {
-    int index = (int) (pg - p->pages);
+    //int index = (int) (pg - p->pages);
     pg->on_disk = 0;
-    pg->va = index * PGSIZE;
+    pg->used = 0;
+    pg->va = 0;
   }
 
   // Allocate a trapframe page.
@@ -200,6 +201,8 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
+  if (p->pid >2 )
+    add_page(pagetable, TRAMPOLINE);
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
@@ -208,6 +211,8 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
+  if (p->pid >2 )
+    add_page(pagetable, TRAPFRAME);
 
   return pagetable;
 }
@@ -295,7 +300,15 @@ fork(void)
     return -1;
   }
 
-  // struct page_on_disk* pod;
+  struct page* pg;
+  for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
+  {
+    int index = (int) (pg - p->pages);
+    np->pages[index].offset = pg->offset;
+    np->pages[index].on_disk = pg->on_disk;
+    np->pages[index].used = pg->used;
+    np->pages[index].va = pg->va;
+  }
   // for ( pod = p->pages_on_disk; pod < &p->pages_on_disk[MAX_TOTAL_PAGES] ; pod++)
   // {
   //   uint index = (uint) (pod - p->pages_on_disk);
@@ -384,6 +397,14 @@ exit(int status)
       fileclose(f);
       p->ofile[fd] = 0;
     }
+  }
+
+  for (struct page* pg = p->pages ; pg <&p->pages[MAX_TOTAL_PAGES] ; pg++)
+  {
+    pg->offset = 0;
+    pg->on_disk = 0;
+    pg->used = 0;
+    pg->va = 0;
   }
 
   begin_op();
