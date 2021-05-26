@@ -537,7 +537,7 @@ void page_swap_out(pagetable_t pagetable)
   sfence_vma();
 }
 
-struct page* pick_page_to_swap(pagetable_t pagetable)
+struct page* pick_page_to_swap_(pagetable_t pagetable)
 {
   struct proc* p = myproc();
   struct page* pg = p->pages;
@@ -565,73 +565,76 @@ struct page* pick_page_to_swap(pagetable_t pagetable)
   return 0;
 }
 
-struct page* pick_page_to_swap_(pagetable_t pagetable)
+struct page* pick_page_to_swap(pagetable_t pagetable)
 {
-  //struct proc* p = myproc();
+  
   #ifdef SELECTION
     switch(SELECTION)
     {
       case SCFIFO:
-        return find_fifo_page(pagetable, p);
-      case LAPA:
-        return find_min_burst();
-      case NFUA:
-        return find_min_ratio();
+        return find_fifo_page(pagetable);
     }
   #endif
   panic("no selection picked!");
   return 0;
 }
 
-// struct page* find_fifo_page(pagetable_t pagetable, struct proc *p)
-// {
+struct page* find_fifo_page(pagetable_t pagetable)
+{
+  struct proc* p = myproc();
+  static int index = 0;
+  //initalize the array that will be sorted next.
+  struct page *arr[MAX_TOTAL_PAGES];
+  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
+  {
+    arr[i] = &p->pages[i];
+  }
+  //use buble sort by the page's time field.
+  for (int i = 0 ; i < MAX_TOTAL_PAGES - 1; i++)
+  {
+    for (int j = i + 1 ; j< MAX_TOTAL_PAGES ; j++)
+    {
+        if(arr[i]->time > arr[j]->time)
+        {
+            struct page* temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+    }
+  }
 
+  //TODO:DELETE! just to see if the sort worked..  
+  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
+  {
+    printf(" va:%d, time:%d used:%s, on_disk:%s,\n", arr[i]->va, arr[i]->time, arr[i]->used ? "true" : "false",arr[i]->on_disk ? "true" : "false" );
+  }
 
-//   struct page* pg;
-//   struct proc* p =myproc();
-//     //printf("pick page\n");
-//     struct page* first = 0;
-//     uint min = -1;
-
-//     // find first page
-//     for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++ )
-//     {
-//       pte_t *pte = walk(pagetable, pg->va, 0);
-
-//       if (pg->used && pg->on_disk == 0)
-//       {
-
-//         if ((*pte & PTE_V)) // if its valid page
-//         {
-//           if ((*pte & PTE_PG) == 0) // and not paged out
-//           {
-//             if(*pte & PTE_U)  // and user page
-//             {
-//               if (pg->time <= min)
-//               {
-//                 min = pg->time;
-//                 first = pg;
-//               }
-//             }
-//           }
-//         }
-//     }
-
-//     if (first != 0)
-//     {
-//       // if accessed give it second change
-//       if (*first->pte & PTE_A)
-//       {
-//         *first->pte = (*first->pte ^ PTE_A); 
-//         printf("%d", (*first->pte & PTE_A));
-//       }
-//       else
-//         return first->pte;
-//     }
-
-//   }
-//   return 0;
-// }
+  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
+  {
+    struct page *pg = arr[(i + index)% MAX_TOTAL_PAGES];
+    pte_t* pte = walk(pagetable, pg->va, 0);
+    if (pg->used && !pg->on_disk)
+    {
+      if ((*pte & PTE_V))
+      {
+        if (*pte & PTE_U)
+        {
+          if(*pte & PTE_A)
+          {
+            *pte = *pte ^ PTE_A;
+          }
+          else 
+          {
+            index = i;
+            // printf("picked------va:%d ,time:%d, used:%s, on_disk:%s\n",pg->va, pg->time, pg->used ? "true" : "false",pg->on_disk ? "true" : "false" );
+            return pg;
+          }
+        }
+      }
+    }
+  }
+  panic("find_fifo_page: no page was found!");
+}
 
 
 // returns 0 if success
@@ -661,7 +664,7 @@ int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
       pg->on_disk = 0;
 
       pte_t* pte = walk(pagetable, pg->va, 0);
-      int perm = (*pte) & 1023; //gives me the lower 10bits (permissions)
+      int perm = (*pte) & 1023; //gives the lower 10bits (permissions)
       perm = (perm ^ PTE_PG) | PTE_V; // turn off pg flag and turn on valid
       *pte = (PA2PTE(mem) | perm);
       return 0;

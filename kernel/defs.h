@@ -191,6 +191,7 @@ void            page_swap_out(pagetable_t pagetable);
 struct page*    pick_page_to_swap(pagetable_t pagetable);
 void            ppages();
 void            print_pages(pagetable_t pagetable);
+struct page*    find_fifo_page(pagetable_t pagetable);
 
 // plic.c
 void            plicinit(void);

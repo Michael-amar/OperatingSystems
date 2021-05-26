@@ -4,22 +4,14 @@
 
 int main()
 {
+
     printf("test\n");
 
     char* a =(char*) malloc(102400);
-    a[0] = '3';
-    for (int i=1; i<102400 ; i++)
+    printf("malloc returned:%p\n",a);
+    for (int i=0; i<102400 ; i++)
          a[i] = '1';
-    
-    int pid = fork();
-    if (pid == 0)
-    {
-        printf("child: %c\n",a[0]);
-        ppages();
-    }
-    else {
-        //printf("%c\n",a[0]);
-    }
+    printf("%d",a[0]);
     exit(0);
     return 0;
 }
