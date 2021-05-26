@@ -79,8 +79,6 @@ usertrap(void)
     
     pte_t* pte = walk(p->pagetable, fault_addr, 0);
     uint64 va = PGROUNDDOWN(fault_addr);
-    //ppages();
-    printf("page fault %d\n", va);
     int res = 1;
     if ((*pte & PTE_PG))
     {

@@ -119,12 +119,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  if (p->pid > 2)
-  {
-    release(&p->lock);
-    createSwapFile(p);
-    acquire(&p->lock);
-  }
+
 
   for (struct page* pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
   {
@@ -293,8 +288,7 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-  printf("fork\n");
-  ppages();
+
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -309,23 +303,7 @@ fork(void)
     np->pages[index].used = pg->used;
     np->pages[index].va = pg->va;
   }
-  // for ( pod = p->pages_on_disk; pod < &p->pages_on_disk[MAX_TOTAL_PAGES] ; pod++)
-  // {
-  //   uint index = (uint) (pod - p->pages_on_disk);
-  //   np->pages_on_disk[index].offset = pod->offset;
-  //   np->pages_on_disk[index].taken = pod->taken;
-  //   np->pages_on_disk[index].pte = pod->pte;
-
-  //   // copy swap file info
-  //   if(pod->taken)
-  //   {
-  //     char * mem = kalloc();
-  //     readFromSwapFile(p, mem, pod->offset, PGSIZE);
-  //     writeToSwapFile(np, mem, pod->offset, PGSIZE);
-  //     kfree(mem);
-  //   }
-  // }
-
+  
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
@@ -356,6 +334,20 @@ fork(void)
   acquire(&wait_lock);
   np->parent = p;
   release(&wait_lock);
+  if (np->pid > 2)
+  {
+    createSwapFile(np);
+    for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
+    {
+      if (pg->used && pg->on_disk)
+      {
+        char* mem = kalloc();
+        readFromSwapFile(p, mem, pg->offset, PGSIZE);
+        writeToSwapFile(np, mem, pg->offset, PGSIZE);
+        kfree(mem);
+      }
+    }
+  }
 
   acquire(&np->lock);
   np->state = RUNNABLE;

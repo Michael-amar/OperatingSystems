@@ -5,15 +5,21 @@
 int main()
 {
     printf("test\n");
-    ppages();
-    malloc(1);
-    ppages();
-    malloc(50000);
-    //char* a =(char*) malloc(1);
-    // for (int i=0; i<102400 ; i++)
-    //     a[i] = '1';
-    // printf("%c\n",a[0]);
-    ppages();
+
+    char* a =(char*) malloc(102400);
+    a[0] = '3';
+    for (int i=1; i<102400 ; i++)
+         a[i] = '1';
+    
+    int pid = fork();
+    if (pid == 0)
+    {
+        printf("child: %c\n",a[0]);
+        ppages();
+    }
+    else {
+        //printf("%c\n",a[0]);
+    }
     exit(0);
     return 0;
 }
