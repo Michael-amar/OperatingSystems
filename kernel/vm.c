@@ -229,7 +229,6 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   char *mem;
   uint64 a;
   struct proc* p = myproc();
-
   if(newsz < oldsz)
     return oldsz;
 
@@ -572,67 +571,123 @@ struct page* pick_page_to_swap(pagetable_t pagetable)
     switch(SELECTION)
     {
       case SCFIFO:
-        return find_fifo_page(pagetable);
+        return scfifo(pagetable);
+      case NFUA:
+        return nfua(pagetable);
+      case LAPA:
+        return lapa(pagetable);
     }
   #endif
   panic("no selection picked!");
   return 0;
 }
 
-struct page* find_fifo_page(pagetable_t pagetable)
+struct page* nfua(pagetable_t pagetable)
 {
   struct proc* p = myproc();
-  static int index = 0;
-  //initalize the array that will be sorted next.
-  struct page *arr[MAX_TOTAL_PAGES];
-  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
-  {
-    arr[i] = &p->pages[i];
-  }
-  //use buble sort by the page's time field.
-  for (int i = 0 ; i < MAX_TOTAL_PAGES - 1; i++)
-  {
-    for (int j = i + 1 ; j< MAX_TOTAL_PAGES ; j++)
-    {
-        if(arr[i]->time > arr[j]->time)
-        {
-            struct page* temp = arr[i];
-            arr[i] = arr[j];
-            arr[j] = temp;
-        }
-    }
-  }
+  struct page* pg;
 
-  //TODO:DELETE! just to see if the sort worked..  
-  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
-  {
-    printf(" va:%d, time:%d used:%s, on_disk:%s,\n", arr[i]->va, arr[i]->time, arr[i]->used ? "true" : "false",arr[i]->on_disk ? "true" : "false" );
-  }
+  uint min = -1; // max int
+  struct page* min_pg = 0;
+  static int index = 0 ; // start each time from diffrent index so it wint go to infinite loop
 
-  for(int i = 0; i < MAX_TOTAL_PAGES; i++)
+  for(int i =index ; i<MAX_TOTAL_PAGES+1 ; i++)
   {
-    struct page *pg = arr[(i + index)% MAX_TOTAL_PAGES];
-    pte_t* pte = walk(pagetable, pg->va, 0);
+    pg = &p->pages[(i+index) % MAX_TOTAL_PAGES];
+    pte_t* pte = walk(pagetable, pg->va , 0);
     if (pg->used && !pg->on_disk)
     {
-      if ((*pte & PTE_V))
+      if ((*pte & PTE_V) && (*pte & PTE_PG) == 0)
       {
         if (*pte & PTE_U)
         {
-          if(*pte & PTE_A)
+          if (pg->NFUA_counter < min)
           {
-            *pte = *pte ^ PTE_A;
+            min = pg->NFUA_counter;
+            min_pg = pg;  
           }
-          else 
+        }
+      }
+    }
+  }
+  index++;
+  if(min_pg == 0)
+    panic("nfua didnt pick page");
+  printf("nfua selected %d\n",min_pg->va);
+  return min_pg;
+  
+}
+
+struct page* lapa(pagetable_t pagetable)
+{
+  //TODO: framework of lapa is done just imlepent algorithm
+  return 0;
+}
+
+struct page* scfifo(pagetable_t pagetable)
+{
+  struct proc* p = myproc();
+  static int index = 0;
+  struct page* pgi;
+  struct page* pgj;
+
+  // sort pages by insertion time
+  for( pgi = p->pages ; pgi < &p->pages[MAX_TOTAL_PAGES-1] ; pgi++)
+  {
+    for ( pgj = pgi+1 ; pgj < &p->pages[MAX_TOTAL_PAGES] ; pgj++)
+    {
+      if (pgi->time > pgj->time)
+      {
+        struct page temp;
+
+        temp.pagetable = pgi->pagetable;
+        temp.va = pgi->va;
+        temp.on_disk = pgi->on_disk;
+        temp.offset = pgi->offset;
+        temp.used = pgi->used;
+        temp.time = pgi->time;
+
+        pgi->pagetable = pgj->pagetable;
+        pgi->va = pgj->va;
+        pgi->on_disk = pgj->on_disk;
+        pgi->offset = pgj->offset;
+        pgi->used = pgj->used;
+        pgi->time = pgj->time;
+
+        pgj->pagetable = temp.pagetable;
+        pgj->va = temp.va;
+        pgj->on_disk = temp.on_disk;
+        pgj->offset = temp.offset;
+        pgj->used = temp.used;
+        pgj->time = temp.time;
+      }
+    }
+  }
+
+  struct page* pg;
+  for( int i = 0 ;  ; i++ )
+  {
+    pg = &p->pages[(i + index) % MAX_TOTAL_PAGES];
+    pte_t* pte = walk(pagetable, pg->va , 0);
+    if (pg->used && !pg->on_disk)
+    {
+      if ((*pte & PTE_V) && (*pte & PTE_PG) == 0)
+      {
+        if (*pte & PTE_U)
+        {
+          if (*pte & PTE_A)
+            *pte = *pte ^ PTE_A;
+          else
           {
-            index = i;
-            // printf("picked------va:%d ,time:%d, used:%s, on_disk:%s\n",pg->va, pg->time, pg->used ? "true" : "false",pg->on_disk ? "true" : "false" );
+            index = (i + index) % MAX_TOTAL_PAGES;
+            printf("pages out:%d\n" , pg->va);
             return pg;
           }
         }
       }
     }
   }
+
   panic("find_fifo_page: no page was found!");
 }
 
@@ -644,31 +699,36 @@ struct page* find_fifo_page(pagetable_t pagetable)
 // va must be aligned to the first va of the requested page
 int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
 {
-  //printf("pid:%d swapping in page starting at va:%d\n",p->pid,  va);
+  printf("swapping in page starting at va:%d\n",va);
   struct page* pg;
   for ( pg =p->pages ; pg <&p->pages[MAX_TOTAL_PAGES] ; pg++)  
   {
-    if (pg->va == va) // found relevant page
+    if(pg->used)
     {
-      if (pg->on_disk == 0)
-        return -2;
+      if (pg->va == va) // found relevant page
+      {
+        if (pg->on_disk == 0)
+          return -2;
 
-      if (countmemory(p->pagetable) >= MAX_PSYC_PAGES)
-          page_swap_out(pagetable);
-      
-      char* mem = kalloc();
-      if(mem == 0)
-        return -1;
+        if (countmemory(p->pagetable) >= MAX_PSYC_PAGES)
+            page_swap_out(pagetable);
+        
+        char* mem = kalloc();
+        if(mem == 0)
+          return -1;
 
-      readFromSwapFile(p, mem, pg->offset, PGSIZE);
-      pg->on_disk = 0;
+        readFromSwapFile(p, mem, pg->offset, PGSIZE);
+        pg->on_disk = 0;
+        pg->time = ticks;
+        pg->NFUA_counter = 0;
+        pg->LAPA_counter = -1;
 
-      pte_t* pte = walk(pagetable, pg->va, 0);
-      int perm = (*pte) & 1023; //gives the lower 10bits (permissions)
-      perm = (perm ^ PTE_PG) | PTE_V; // turn off pg flag and turn on valid
-      *pte = (PA2PTE(mem) | perm);
-      return 0;
-  
+        pte_t* pte = walk(pagetable, pg->va, 0);
+        int perm = (*pte) & 1023; //gives the lower 10bits (permissions)
+        perm = (perm ^ PTE_PG) | PTE_V; // turn off pg flag and turn on valid
+        *pte = (PA2PTE(mem) | perm);
+        return 0;
+      }
     }
   }
   return -3;
@@ -688,20 +748,8 @@ void print_pages(pagetable_t pagetable)
    struct proc* p = myproc();
    struct page* pg;
    for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
-      printf("va : %d, on disk: %d ,  offset : %d , used : %d \n",pg->va , pg->on_disk , pg->offset , pg->used);
+      printf("va : %d, on disk: %d ,  offset : %d , used : %d, nufa_counter:%d, lapa_counter:%d\n",pg->va , pg->on_disk , pg->offset , pg->used, pg->NFUA_counter, pg->LAPA_counter);
 
-  // for(int i = 0; i < 512; i++)
-  // {
-  //   pte_t* pte = &pagetable[i];
-  //   if((*pte & PTE_V) && (*pte & (PTE_R|PTE_W|PTE_X)) == 0){
-  //     uint64 child = PTE2PA(*pte);
-  //     print_pages((pagetable_t)child);
-  //   } 
-  //   else if((*pte & PTE_V) || ((*pte & PTE_PG)))
-  //   {
-  //     printf("pte address of pid %d = %p\n",myproc()->pid, pte);
-  //   }
-  // }
 }
 
 
@@ -720,6 +768,8 @@ void add_page(pagetable_t pagetable, uint64 va)
         pg->used = 1;
         pg->va = va;
         pg->time = ticks;
+        pg->NFUA_counter = 0;
+        pg->LAPA_counter = -1;
         return;
       }
     } 
@@ -731,23 +781,25 @@ void remove_page(pagetable_t pagetable, uint64 va)
   struct proc* p = myproc();
   if (p->pid > 2)
   {
-  struct page* pg;
-  for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
-  {
-    if (pg->used == 1)
+    struct page* pg;
+    for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
     {
-      if (pg->va == va)
+      if (pg->used == 1)
       {
-        
-          pg->used = 0;
-          pg->va = 0;
-          pg->offset = 0;
-          pg->on_disk = 0;
-          pg->pagetable = 0;
-          return;
+        if (pg->va == va)
+        {
+            pg->time = 0;
+            pg->used = 0;
+            pg->va = 0;
+            pg->offset = 0;
+            pg->on_disk = 0;
+            pg->pagetable = 0;
+            pg->NFUA_counter = 0;
+            pg->LAPA_counter = 0;
+            return;
 
+        }
       }
-    }
-  } 
+    } 
   }
 }

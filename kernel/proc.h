@@ -89,7 +89,13 @@ struct page
   int on_disk;  // flag indicates if the page is on disk or not
   uint offset;  // offset of the file on the disk (if relevant)
   int used;     
+
+  // for SCFIFO
   uint time;
+
+  uint NFUA_counter;
+
+  uint LAPA_counter;
 };
 
 // Per-process state

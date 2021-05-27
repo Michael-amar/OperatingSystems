@@ -79,18 +79,20 @@ usertrap(void)
     
     pte_t* pte = walk(p->pagetable, fault_addr, 0);
     uint64 va = PGROUNDDOWN(fault_addr);
+    printf("page fault %d\n", va);  
     int res = 1;
     if ((*pte & PTE_PG))
     {
       res = page_swap_in(p->pagetable, va, p);
       if (res != 0)
-        printf("swap_in failed\n");   
+        printf("swap_in failed %d\n",res);   
       
     }
     if (res != 0 )
     {
       print_pages(p->pagetable);
       printf("fault address:%p\n",(void*) fault_addr);
+      printf("va:%d\n",PGROUNDDOWN(fault_addr));
       printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
       printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
       p->killed = 1;
