@@ -521,7 +521,6 @@ void page_swap_out(pagetable_t pagetable)
   struct proc* p = myproc();
 
   struct page* pg_to_swap = pick_page_to_swap(pagetable);
-  //printf("swapping out page starting in:%d\n", pg_to_swap->va);
   uint offset = get_offset();
 
   uint64 pa = walkaddr(pagetable, pg_to_swap->va);
@@ -541,33 +540,6 @@ void page_swap_out(pagetable_t pagetable)
   sfence_vma();
 }
 
-struct page* pick_page_to_swap_(pagetable_t pagetable)
-{
-  struct proc* p = myproc();
-  struct page* pg = p->pages;
-  for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
-  {
-    if (pg->used)
-    {
-      //printf("va %d\n", pg->va);  
-      if (pg->va == 4096 || pg->va == 0)
-        continue; //we dont want to swap text page
-      pte_t* pte = walk(pagetable, pg->va, 0);
-      if ((*pte & PTE_V)) // if valid page
-      {
-        if ((*pte & PTE_PG) == 0) // and page is not pages out
-        {
-          if(*pte & PTE_U)  // and its a user page
-          {
-            return pg;
-          } 
-        }
-      }
-    }
-  }
-  panic("no page returned");
-  return 0;
-}
 
 struct page* pick_page_to_swap(pagetable_t pagetable)
 {
@@ -622,7 +594,6 @@ struct page* nfua(pagetable_t pagetable)
   {
     panic("nfua didnt pick page");
   }
-  printf("nfua selected %d\n",min_pg->va);
   return min_pg;
   
 }
@@ -674,7 +645,6 @@ struct page* lapa(pagetable_t pagetable)
   {
     panic("lapa didnt pick page");
   }
-  printf("lapa selected %d\n",min_pg->va);
   return min_pg;
 }
 
@@ -746,7 +716,6 @@ struct page* scfifo(pagetable_t pagetable)
           else
           {
             index = (i + index) % MAX_TOTAL_PAGES;
-            printf("pages out:%d\n" , pg->va);
             return pg;
           }
         }
@@ -765,7 +734,6 @@ struct page* scfifo(pagetable_t pagetable)
 // va must be aligned to the first va of the requested page
 int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
 {
-  printf("swapping in page starting at va:%d\n",va);
   struct page* pg;
   for ( pg =p->pages ; pg <&p->pages[MAX_TOTAL_PAGES] ; pg++)  
   {
@@ -793,6 +761,8 @@ int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
         int perm = (*pte) & 1023; //gives the lower 10bits (permissions)
         perm = (perm ^ PTE_PG) | PTE_V; // turn off pg flag and turn on valid
         *pte = (PA2PTE(mem) | perm);
+        // refresh TLB
+        sfence_vma();
         return 0;
       }
     }
@@ -815,7 +785,7 @@ void print_pages(pagetable_t pagetable)
    struct page* pg;
    for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
    {
-      printf("va : %d, on disk: %d ,  offset : %d , used : %d, nufa_counter:%d, lapa_counter(binary):",pg->va , pg->on_disk , pg->offset , pg->used, pg->NFUA_counter); print_binary(pg->LAPA_counter);
+      printf("va : %d, time:%d , on disk: %d ,  offset : %d , used : %d, nufa_counter:%d, lapa_counter(binary):",pg->va ,pg->time, pg->on_disk , pg->offset , pg->used, pg->NFUA_counter); print_binary(pg->LAPA_counter);
    }
 }
 

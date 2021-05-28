@@ -769,7 +769,6 @@ removeSwapFile(struct proc* p)
 int
 createSwapFile(struct proc* p)
 {
-  printf("createSwapFile\n");
   char path[DIGITS];
   memmove(path,"/.swap", 6);
   itoa(p->pid, path+ 6);
@@ -777,10 +776,8 @@ createSwapFile(struct proc* p)
   begin_op();
   
   struct inode * in = create(path, T_FILE, 0, 0);
-  printf("created file\n");
   iunlock(in);
   p->swapFile = filealloc();
-  printf("allocated file\n");
   if (p->swapFile == 0)
     panic("no slot for files on /store");
 

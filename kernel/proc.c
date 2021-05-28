@@ -127,6 +127,8 @@ found:
     pg->on_disk = 0;
     pg->used = 0;
     pg->va = 0;
+    pg->LAPA_counter = 0;
+    pg->NFUA_counter = 0;
   }
 
   // Allocate a trapframe page.
@@ -300,6 +302,8 @@ fork(void)
     np->pages[index].on_disk = pg->on_disk;
     np->pages[index].used = pg->used;
     np->pages[index].va = pg->va;
+    np->pages[index].NFUA_counter = pg->NFUA_counter;
+    np->pages[index].LAPA_counter = pg->LAPA_counter;
   }
   
 
