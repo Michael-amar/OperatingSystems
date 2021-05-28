@@ -589,9 +589,10 @@ struct page* nfua(pagetable_t pagetable)
 
   uint min = -1; // max int
   struct page* min_pg = 0;
+  int picked = 0;
   static int index = 0 ; // start each time from diffrent index so it wint go to infinite loop
 
-  for(int i =index ; i<MAX_TOTAL_PAGES+1 ; i++)
+  for(int i =0 ; i<MAX_TOTAL_PAGES+1 ; i++)
   {
     pg = &p->pages[(i+index) % MAX_TOTAL_PAGES];
     pte_t* pte = walk(pagetable, pg->va , 0);
@@ -605,14 +606,17 @@ struct page* nfua(pagetable_t pagetable)
           {
             min = pg->NFUA_counter;
             min_pg = pg;  
+            picked = 1; 
           }
         }
       }
     }
   }
   index++;
-  if(min_pg == 0)
+  if(!picked)
+  {
     panic("nfua didnt pick page");
+  }
   printf("nfua selected %d\n",min_pg->va);
   return min_pg;
   
@@ -620,8 +624,66 @@ struct page* nfua(pagetable_t pagetable)
 
 struct page* lapa(pagetable_t pagetable)
 {
-  //TODO: framework of lapa is done just imlepent algorithm
-  return 0;
+  struct proc* p = myproc();
+  struct page* pg;
+  uint min_set_bits = 65; 
+  uint min_value = -1; // max uint
+  struct page* min_pg = 0;
+  int picked = 0;
+  static int index = 0 ; // start each time from diffrent index so it wont go to infinite loop
+
+  for(int i =0 ; i<MAX_TOTAL_PAGES+1 ; i++)
+  {
+    pg = &p->pages[(i+index) % MAX_TOTAL_PAGES];
+    pte_t* pte = walk(pagetable, pg->va , 0);
+    if (pg->used && !pg->on_disk)
+    {
+      if ((*pte & PTE_V) && (*pte & PTE_PG) == 0)
+      {
+        if (*pte & PTE_U)
+        {
+          uint set_bits = count_one_bits(pg->LAPA_counter);
+          if (set_bits < min_set_bits)
+          {
+            min_set_bits = set_bits;
+            min_value = pg->LAPA_counter;
+            min_pg = pg;  
+            picked = 1; 
+          }
+          else if (set_bits == min_set_bits)
+          {
+            // if two pages have same number of 1's the value of the counter decides
+            if (pg->LAPA_counter < min_value)
+            {
+              min_value = pg->LAPA_counter;
+              min_pg = pg;  
+              picked = 1; 
+            }
+          }
+        }
+      }
+    }
+  }
+  index++;
+  if(!picked)
+  {
+    panic("lapa didnt pick page");
+  }
+  printf("lapa selected %d\n",min_pg->va);
+  ppages();
+  return min_pg;
+}
+
+int count_one_bits(uint n)
+{
+  int counter = 0;
+  while(n)
+  {
+    counter += n & 1;
+    n >>= 1;
+    counter++;
+  }
+  return counter;
 }
 
 struct page* scfifo(pagetable_t pagetable)
@@ -748,10 +810,27 @@ void print_pages(pagetable_t pagetable)
    struct proc* p = myproc();
    struct page* pg;
    for(pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
-      printf("va : %d, on disk: %d ,  offset : %d , used : %d, nufa_counter:%d, lapa_counter:%d\n",pg->va , pg->on_disk , pg->offset , pg->used, pg->NFUA_counter, pg->LAPA_counter);
-
+   {
+      printf("va : %d, on disk: %d ,  offset : %d , used : %d, nufa_counter:%d, lapa_counter(binary):",pg->va , pg->on_disk , pg->offset , pg->used, pg->NFUA_counter); print_binary(pg->LAPA_counter);
+   }
 }
 
+void print_binary(uint n)
+{
+  int leading_zeros = 1;
+  for(int i = 0 ;i < 32 ; i++){
+    if (n & (1 << 31))
+    {
+        leading_zeros = 1;
+        printf("1");
+    }
+    else if (!leading_zeros)
+        printf("0");
+
+    n <<= 1;
+  }
+  printf("\n");
+}
 
 // find unused page struct in p->pages and set its va
 void add_page(pagetable_t pagetable, uint64 va)

@@ -20,19 +20,17 @@ void scfifo_test()
 void nfua_test()
 {
     fork();
+    fork();
+    printf("hello");
     // allocate 2 user pages
-    char* a = malloc(8092);
+    char* a = malloc(56000);
     
     // only access first page
-    for(int i=0 ; i<4096; i++)
+    for(int i=0 ; i<56000; i++)
         a[i] = '1';
     sleep(3);
-    printf("a[500]:%d\n",a[500]);
-    sleep(3);
-    printf("a[600]:%d\n", a[600]);
-    printf("a[5000]:%d\n",a[5000]);
     // expect the second page ->NFUA_counter to be only 0's
-    ppages();
+    //ppages();
 }
 
 int main()

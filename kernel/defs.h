@@ -194,6 +194,9 @@ void            print_pages(pagetable_t pagetable);
 struct page*    scfifo(pagetable_t pagetable);
 struct page*    nfua(pagetable_t pagetable);
 struct page*    lapa(pagetable_t pagetable);
+void            print_binary(uint n);
+int             count_one_bits(uint n);
+
 
 // plic.c
 void            plicinit(void);

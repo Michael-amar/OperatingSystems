@@ -502,14 +502,17 @@ scheduler(void)
         struct page* pg;
         for (pg = p->pages ; pg < &p->pages[MAX_TOTAL_PAGES] ; pg++)
         {
-          pg->NFUA_counter = pg->NFUA_counter >> 1; //shift left counter by 1
-          pg->LAPA_counter = pg->LAPA_counter >> 1; //shift left counter by 1
-          pte_t* pte = walk(p->pagetable, pg->va, 0);
-          if(*pte & PTE_A)
+          if (pg->used && !pg->on_disk)
           {
-            *pte = *pte ^ PTE_A;  // turn off access bit
-            pg->NFUA_counter = pg->NFUA_counter | (1 << 31); // add 1 to left most bit
-            pg->LAPA_counter = pg->LAPA_counter | (1 << 31);
+            pg->NFUA_counter = pg->NFUA_counter >> 1; //shift left counter by 1
+            pg->LAPA_counter = pg->LAPA_counter >> 1; //shift left counter by 1
+            pte_t* pte = walk(p->pagetable, pg->va, 0);
+            if(*pte & PTE_A)
+            {
+              *pte = *pte ^ PTE_A;  // turn off access bit
+              pg->NFUA_counter = pg->NFUA_counter | (1 << 31); // add 1 to left most bit
+              pg->LAPA_counter = pg->LAPA_counter | (1 << 31);
+            }
           }
         }
         // Process is done running for now.
