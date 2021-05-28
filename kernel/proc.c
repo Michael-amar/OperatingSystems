@@ -402,6 +402,9 @@ exit(int status)
   end_op();
   p->cwd = 0;
 
+  if(p->pid >2 )
+    removeSwapFile(p);
+
   acquire(&wait_lock);
 
   // Give any children to init.

@@ -74,7 +74,14 @@ usertrap(void)
   else if ((p->pid > 2) && (r_scause() == 13 || r_scause() == 15 || r_scause() == 12))
   {
     //page fault
-    
+    #ifdef SELECTION
+      if (SELECTION == NONE)
+      {
+        printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+        printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+        p->killed = 1;
+      }
+    #endif
     uint64 fault_addr = r_stval();
     
     pte_t* pte = walk(p->pagetable, fault_addr, 0);

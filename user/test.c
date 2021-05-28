@@ -35,8 +35,12 @@ void nfua_test()
 
 int main()
 {
+    ppages();
+    fork();
+    fork();
+    fork();
+    
     printf("hello");
-    nfua_test();
     exit(0);
     return 0;
 }

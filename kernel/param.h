@@ -16,3 +16,4 @@
 #define SCFIFO 1
 #define NFUA 2
 #define LAPA 3
+#define NONE 4

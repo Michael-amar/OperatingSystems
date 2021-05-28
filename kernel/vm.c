@@ -235,8 +235,13 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE)
   {
-    if ((p->pid > 2) && (countmemory(pagetable) >= MAX_PSYC_PAGES))
-      page_swap_out(pagetable);
+    #ifdef SELECTION
+      if (SELECTION != NONE)
+      {
+        if ((p->pid > 2) && (countmemory(pagetable)-2 >= MAX_PSYC_PAGES))
+          page_swap_out(pagetable);
+      }
+    #endif
     mem = kalloc();
     if(mem == 0)
     {
@@ -251,8 +256,6 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
 
-    if (a % PGSIZE != 0)
-      panic("a is not aligned");
     add_page(pagetable, a);
   }
   return newsz;
@@ -471,6 +474,7 @@ int countmemory(pagetable_t pagetable)
     }
   }
   return counter;
+
 }
 
 int counttotal(pagetable_t pagetable)
@@ -489,6 +493,7 @@ int counttotal(pagetable_t pagetable)
     }
   }
   return counter;
+
 }
 
 // returns free offset in swapFile that can be written 
@@ -670,7 +675,6 @@ struct page* lapa(pagetable_t pagetable)
     panic("lapa didnt pick page");
   }
   printf("lapa selected %d\n",min_pg->va);
-  ppages();
   return min_pg;
 }
 
@@ -772,7 +776,7 @@ int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
         if (pg->on_disk == 0)
           return -2;
 
-        if (countmemory(p->pagetable) >= MAX_PSYC_PAGES)
+        if (countmemory(p->pagetable)-2 >= MAX_PSYC_PAGES)
             page_swap_out(pagetable);
         
         char* mem = kalloc();
@@ -800,8 +804,8 @@ int page_swap_in(pagetable_t pagetable, uint64 va, struct proc *p)
 void ppages()
 {
   struct proc* p = myproc();
-  printf("total pages:%d\n", counttotal(p->pagetable));
-  printf("pages in memory:%d\n", countmemory(p->pagetable));
+  printf("total pages:%d\n", counttotal(p->pagetable)-2);
+  printf("pages in memory:%d\n", countmemory(p->pagetable)-2);
   print_pages(p->pagetable);
 }
 
@@ -835,6 +839,11 @@ void print_binary(uint n)
 // find unused page struct in p->pages and set its va
 void add_page(pagetable_t pagetable, uint64 va)
 {
+  #ifdef SELECTION
+    if (SELECTION == NONE)
+      return;
+  #endif
+
   struct proc* p = myproc();
   if (p->pid > 1) // we want the shell process to add pages to sub processes so > 1 and not > 2
   {
@@ -857,6 +866,10 @@ void add_page(pagetable_t pagetable, uint64 va)
 
 void remove_page(pagetable_t pagetable, uint64 va)
 {
+  #ifdef SELECTION
+    if(SELECTION == NONE)
+      return;
+  #endif
   struct proc* p = myproc();
   if (p->pid > 2)
   {
