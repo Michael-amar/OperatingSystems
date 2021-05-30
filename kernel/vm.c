@@ -173,11 +173,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if(((*pte & PTE_V) == 0) && ((*pte & PTE_PG) == 0))
+    if(((*pte & PTE_V) == 0) && ((*pte & PTE_PG) == 0) && ((*pte & PTE_L) == 0))
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free)
+    if(do_free & ((*pte & PTE_L) == 0))
     {
       
       if ((*pte & PTE_PG) == 0)
@@ -224,7 +224,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
-uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int lazy)
 {
   char *mem;
   uint64 a;
@@ -255,7 +255,15 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
-
+    #ifdef SELECTION
+      // use lazy allocation only when SELECTION is NONE
+      if (SELECTION == NONE && p->pid > 2 && lazy)
+      {
+        pte_t* pte = walk(pagetable, a, 0);
+        *pte = (*pte | PTE_L) ^ PTE_V; // turn on lazy flag (mapped but not allocated) and turn off valid bit
+        kfree(mem);
+      }
+    #endif
     add_page(pagetable, a);
   }
   return newsz;
@@ -326,7 +334,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0 && (*pte & PTE_PG) == 0)
+    if((*pte & PTE_V) == 0 && (*pte & PTE_PG) == 0 && (*pte & PTE_L) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
@@ -343,6 +351,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       pte_t* pte2 = walk(new , i , 0);
       *pte2 = (*pte2) ^ PTE_V;
       kfree(mem);
+    }
+    if (*pte & PTE_L)
+    {
+      kfree(mem);
+      *pte = *pte ^ PTE_V;
     }
   }
   return 0;

@@ -332,6 +332,7 @@ sfence_vma()
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4) // 1 -> user can access
 #define PTE_A (1L << 6)
+#define PTE_L (1L << 8) // lazy (mapped but not allocated)
 #define PTE_PG (1L << 9) //paged out
 
 // shift a physical address to the right place for a PTE.

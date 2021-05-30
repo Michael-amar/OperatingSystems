@@ -73,36 +73,50 @@ usertrap(void)
   } 
   else if ((p->pid > 2) && (r_scause() == 13 || r_scause() == 15 || r_scause() == 12))
   {
-    //page fault
-    #ifdef SELECTION
-      if (SELECTION == NONE)
-      {
+    
+    uint64 fault_addr = r_stval();
+    if (fault_addr > MAXVA)
+    {
+        printf("page fault- max va exceeds\n");
         printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
         printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
         p->killed = 1;
-      }
-    #endif
-    uint64 fault_addr = r_stval();
-    
-    pte_t* pte = walk(p->pagetable, fault_addr, 0);
-    uint64 va = PGROUNDDOWN(fault_addr);
-    printf("page fault %d\n", va);  
-    int res = 1;
-    if ((*pte & PTE_PG))
-    {
-      res = page_swap_in(p->pagetable, va, p);
-      if (res != 0)
-        printf("swap_in failed %d\n",res);   
-      
     }
-    if (res != 0 )
+    else
     {
-      print_pages(p->pagetable);
-      printf("fault address:%p\n",(void*) fault_addr);
-      printf("va:%d\n",PGROUNDDOWN(fault_addr));
-      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-      p->killed = 1;
+      pte_t* pte = walk(p->pagetable, fault_addr, 0);
+      uint64 va = PGROUNDDOWN(fault_addr);
+      printf("page fault %d\n", va);  
+      int res = 1;
+      if ((*pte & PTE_PG))
+      {
+        res = page_swap_in(p->pagetable, va, p);
+        if (res != 0)
+        {
+          printf("fault address:%p\n",(void*) fault_addr);
+          printf("va:%d\n",PGROUNDDOWN(fault_addr));
+          printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+          printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+          p->killed = 1;
+        }
+        
+      }
+      else if ((*pte & PTE_L))
+      {
+        *pte = (*pte ^ PTE_L) | PTE_V;
+        char* mem = kalloc();
+        memset(mem, 0, PGSIZE);
+        // int permissions = PTE_FLAGS(*pte);
+        *pte = (PA2PTE(mem)) | PTE_U | PTE_R | PTE_W | PTE_X | PTE_V;// | permissions;
+        //printf("%d",PTE_FLAGS(*pte));
+      }
+      else
+      {
+          printf("page fault- not page out page and not lazy allocated page\n");
+          printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+          printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+          p->killed = 1;
+      }
     }
   }
   else 
