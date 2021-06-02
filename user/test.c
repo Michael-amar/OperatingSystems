@@ -182,10 +182,12 @@ void lapa_test()
 
 int main()
 {
+    //BEFORE running any test make sure to uncomment the printf in trap.c -
+    // usertrap that prints the pagefualt address!!!!!!
+    
     //scfifo_test();
     //nfua_test();
-    //lapa_test();
-    ppages();
+    lapa_test();
     exit(0);
     return 0;
 }
